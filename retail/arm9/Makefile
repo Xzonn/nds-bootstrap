@@ -36,19 +36,20 @@ endif
 #---------------------------------------------------------------------------------
 BUILD		:=	build
 SOURCES		:=	source source/flashcard source/polarssl source/twltool source/gm9i source/nand mbedtls libeasysave/source/ini ../common/source_general
-INCLUDES	:=	include include/flashcard include/polarssl include/twltool include/gm9i include/nand libeasysave/include ../common/include
+INCLUDES	:=	include include/flashcard include/polarssl include/twltool include/gm9i include/nand libeasysave/include ../common/include ../../../TWiLightMenu/slot1launch/bootloader/source ../../../TWiLightMenu/universal/include
 
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
 ARCH	:=	-mthumb-interwork
+LAUNCH_TRACE ?= 0
 
 CFLAGS	:=	-g -Wall -O2\
  			-march=armv5te -mtune=arm946e-s -fomit-frame-pointer\
 			-ffast-math \
 			$(ARCH)
 
-CFLAGS	+=	$(INCLUDE) -DARM9 -DNO_CARDID -DDEFAULT_CARD_READ_DMA
+CFLAGS	+=	$(INCLUDE) -DARM9 -DNO_CARDID -DDEFAULT_CARD_READ_DMA -DNP3D_FRONTEND -DNP3D_LAUNCH_TRACE=$(LAUNCH_TRACE)
 CXXFLAGS	:=	$(CFLAGS) -fno-rtti -fno-exceptions
 
 ASFLAGS	:=	-g $(ARCH) $(INCLUDE)
@@ -79,8 +80,10 @@ export DEPSDIR	:= $(CURDIR)/$(BUILD)
 
 export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 					$(foreach dir,$(DATA),$(CURDIR)/$(dir))
+export VPATH := $(VPATH):$(CURDIR)/../../../TWiLightMenu/slot1launch/bootloader/source
 
 CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
+CFILES		+=	read_card.c encryption.c
 CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 BINFILES	:=	

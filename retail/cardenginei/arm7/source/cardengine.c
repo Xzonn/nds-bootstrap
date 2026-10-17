@@ -18,6 +18,7 @@
 
 #include <string.h>
 #include <nds/ndstypes.h>
+#include <nds/card.h>
 #include <nds/fifomessages.h>
 #include <nds/dma.h>
 #include <nds/ipc.h>
@@ -1656,6 +1657,9 @@ static inline void sdmmcHandler(void) { // Unused
 #endif
 
 void runCardEngineCheck(void) {
+	u16 spi = REG_AUXSPICNT;
+	if ((romFile->fatTableSettings & fatVirtual) && ((spi & CARD_SPI_BUSY)
+		|| (spi & (CARD_SPI_ENABLE | CARD_SPI_HOLD)) == (CARD_SPI_ENABLE | CARD_SPI_HOLD))) return;
 	// if (!(valueBits & b_runCardEngineCheck)) return;
 
 	//dbg_printf("runCardEngineCheck\n");
@@ -1712,6 +1716,9 @@ void runCardEngineCheck(void) {
 }
 
 void runCardEngineCheckHalt(void) {
+	u16 spi = REG_AUXSPICNT;
+	if ((romFile->fatTableSettings & fatVirtual) && ((spi & CARD_SPI_BUSY)
+		|| (spi & (CARD_SPI_ENABLE | CARD_SPI_HOLD)) == (CARD_SPI_ENABLE | CARD_SPI_HOLD))) return;
 	//dbg_printf("runCardEngineCheckHalt\n");
 	#ifdef DEBUG		
 	nocashMessage("runCardEngineCheckHalt");
@@ -2089,7 +2096,7 @@ void myIrqHandlerVBlank(void) {
 	}
 
 	// calledViaIPC = false;
-	// runCardEngineCheck();
+	if (romFile->fatTableSettings & fatVirtual) runCardEngineCheck();
 
 	// Fix ARM9 VCount IRQ settings for color LUT and/or swap screens
 	if ((valueBits & useColorLut) || (mainScreen > 0) || (screenIpc == 0x7)) {

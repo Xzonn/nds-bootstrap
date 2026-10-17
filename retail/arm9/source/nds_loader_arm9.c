@@ -33,6 +33,7 @@
 
 #include "myDSiMode.h"
 #include "lzss.h"
+#include "np3d_vfs.h"
 #include "tonccpy.h"
 #include "hex.h"
 #include "configuration.h"
@@ -241,6 +242,8 @@ int runNds(u32 cluster, u32 saveCluster, u32 donorTwlCluster, /* u32 gbaCluster,
 	// Load bootloader binary
 	char bootloaderPath[32];
 	sprintf(bootloaderPath, "nitro:/load%s%i.lz77", (dsiFeatures() && !conf->b4dsMode) ? "i" : "", conf->loaderType);
+	np3dBootLog("bootstrap: loading %s ROM cluster=%08lX save cluster=%08lX\n",
+		bootloaderPath, (unsigned long)cluster, (unsigned long)saveCluster);
 	FILE* bootloaderBin = fopen(bootloaderPath, "rb");
 	if (bootloaderBin) {
 		fread(lz77ImageBuffer, 1, 0x30000, bootloaderBin);
@@ -338,7 +341,15 @@ int runNds(u32 cluster, u32 saveCluster, u32 donorTwlCluster, /* u32 gbaCluster,
 	loader->cacheBlockSize              = conf->cacheBlockSize;
 	tonccpy(loader->bannerSavPath, conf->bannerSavPath, strlen(conf->bannerSavPath));
 	tonccpy(loader->version, VER_NUMBER, sizeof(VER_NUMBER));
+	if (dsiFeatures() && !conf->b4dsMode) {
+		loader->np3dTraceCluster = 0;
+#if NP3D_LAUNCH_TRACE
+		loader->np3dTraceCluster = np3dPrepareLoaderLog();
+		np3dBootLog("bootstrap: ARM7 diagnostic file ready cluster=%08lX\n", (unsigned long)loader->np3dTraceCluster);
+#endif
+	}
 
+	np3dBootLog("bootstrap: retail loader prepared; beginning ARM7 handoff\n");
 	nocashMessage("irqDisable(IRQ_ALL);");
 	irqDisable(IRQ_ALL);
 

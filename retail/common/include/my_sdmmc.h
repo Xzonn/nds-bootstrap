@@ -125,6 +125,7 @@ extern "C" {
 	} mmcdevice;
 
 	void sdmmc_set_ndma_slot(int slot);
+	int sdmmc_get_ndma_slot(void);
 	void sdmmc_lock_ndma_slot(void);
 
 	void sdmmc_init();

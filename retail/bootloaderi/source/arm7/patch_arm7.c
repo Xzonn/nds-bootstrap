@@ -11,6 +11,7 @@
 #include "cardengine_header_arm7.h"
 #include "debug_file.h"
 #include <nds/card.h>
+#include "np3d_fat.h"
 
 extern u8 gameOnFlashcard;
 extern u8 saveOnFlashcard;
@@ -855,7 +856,13 @@ u32 patchCardNdsArm7(
 		// GameCodeMatch: Compare gamecodes between DS Cartridge and Rom on SD
 		// This file can active save located into DS Cartridge for dsi/3ds mode.
 		bool GameCodeMatch = false;
-		if (!gameOnFlashcard && !saveOnFlashcard && REG_SCFG_EXT != 0 && !(REG_SCFG_MC & BIT(0))) {
+		extern u32 storedFileCluster;
+		aFile originalFile;
+		getFileFromCluster(&originalFile, storedFileCluster, false);
+		u32 originalCode;
+		if (np3dOriginalCardCode(&originalFile, &originalCode)) {
+			GameCodeMatch = true;
+		} else if (!gameOnFlashcard && !saveOnFlashcard && REG_SCFG_EXT != 0 && !(REG_SCFG_MC & BIT(0))) {
 			char headerData[0x200] = {0};
 			cardParamCommand (CARD_CMD_HEADER_READ, 0, 
 				CARD_ACTIVATE | CARD_nRESET | CARD_CLK_SLOW | CARD_BLK_SIZE(1) | CARD_DELAY1(0x1FFF) | CARD_DELAY2(0x3F), 

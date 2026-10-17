@@ -77,6 +77,7 @@ typedef struct loadCrt0 {
 	u16 cacheBlockSize;
 	char bannerSavPath[64];
 	unsigned char version[20];
+	u32 np3dTraceCluster;
 } loadCrt0;
 
 #endif // LOAD_CRT0_H

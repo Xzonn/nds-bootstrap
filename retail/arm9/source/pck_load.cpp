@@ -339,39 +339,39 @@ void loadApFix(configuration* conf, const char* bootstrapPath, const char* romTi
 			romFilename.erase(0, last_slash_idx + 1);
 		}
 
-		sprintf(conf->apPatchPath, "%s:/_nds/nds-bootstrap/apFix/%s.ips", conf->bootstrapOnFlashcard ? "fat" : "sd", romFilename.c_str());
+		sprintf(conf->apPatchPath, "%s:/nitro-patcher/runtime/bootstrap/apFix/%s.ips", conf->bootstrapOnFlashcard ? "fat" : "sd", romFilename.c_str());
 		if (access(conf->apPatchPath, F_OK) == 0) {
 			conf->apPatchSize = getFileSize(conf->apPatchPath);
 			return;
 		}
 
-		sprintf(conf->apPatchPath, "%s:/_nds/nds-bootstrap/apFix/%s.bin", conf->bootstrapOnFlashcard ? "fat" : "sd", romFilename.c_str());
-		if (access(conf->apPatchPath, F_OK) == 0) {
-			conf->apPatchSize = getFileSize(conf->apPatchPath);
-			conf->valueBits |= BIT(5);
-			return;
-		}
-
-		sprintf(conf->apPatchPath, "%s:/_nds/nds-bootstrap/apFix/%s-%04X.ips", conf->bootstrapOnFlashcard ? "fat" : "sd", romTid, headerCRC);
-		if (access(conf->apPatchPath, F_OK) == 0) {
-			conf->apPatchSize = getFileSize(conf->apPatchPath);
-			return;
-		}
-
-		sprintf(conf->apPatchPath, "%s:/_nds/nds-bootstrap/apFix/%s-%04X.ips", conf->bootstrapOnFlashcard ? "fat" : "sd", romTid, 0xFFFF);
-		if (access(conf->apPatchPath, F_OK) == 0) {
-			conf->apPatchSize = getFileSize(conf->apPatchPath);
-			return;
-		}
-
-		sprintf(conf->apPatchPath, "%s:/_nds/nds-bootstrap/apFix/%s-%04X.bin", conf->bootstrapOnFlashcard ? "fat" : "sd", romTid, headerCRC);
+		sprintf(conf->apPatchPath, "%s:/nitro-patcher/runtime/bootstrap/apFix/%s.bin", conf->bootstrapOnFlashcard ? "fat" : "sd", romFilename.c_str());
 		if (access(conf->apPatchPath, F_OK) == 0) {
 			conf->apPatchSize = getFileSize(conf->apPatchPath);
 			conf->valueBits |= BIT(5);
 			return;
 		}
 
-		sprintf(conf->apPatchPath, "%s:/_nds/nds-bootstrap/apFix/%s-%04X.bin", conf->bootstrapOnFlashcard ? "fat" : "sd", romTid, 0xFFFF);
+		sprintf(conf->apPatchPath, "%s:/nitro-patcher/runtime/bootstrap/apFix/%s-%04X.ips", conf->bootstrapOnFlashcard ? "fat" : "sd", romTid, headerCRC);
+		if (access(conf->apPatchPath, F_OK) == 0) {
+			conf->apPatchSize = getFileSize(conf->apPatchPath);
+			return;
+		}
+
+		sprintf(conf->apPatchPath, "%s:/nitro-patcher/runtime/bootstrap/apFix/%s-%04X.ips", conf->bootstrapOnFlashcard ? "fat" : "sd", romTid, 0xFFFF);
+		if (access(conf->apPatchPath, F_OK) == 0) {
+			conf->apPatchSize = getFileSize(conf->apPatchPath);
+			return;
+		}
+
+		sprintf(conf->apPatchPath, "%s:/nitro-patcher/runtime/bootstrap/apFix/%s-%04X.bin", conf->bootstrapOnFlashcard ? "fat" : "sd", romTid, headerCRC);
+		if (access(conf->apPatchPath, F_OK) == 0) {
+			conf->apPatchSize = getFileSize(conf->apPatchPath);
+			conf->valueBits |= BIT(5);
+			return;
+		}
+
+		sprintf(conf->apPatchPath, "%s:/nitro-patcher/runtime/bootstrap/apFix/%s-%04X.bin", conf->bootstrapOnFlashcard ? "fat" : "sd", romTid, 0xFFFF);
 		if (access(conf->apPatchPath, F_OK) == 0) {
 			conf->apPatchSize = getFileSize(conf->apPatchPath);
 			conf->valueBits |= BIT(5);

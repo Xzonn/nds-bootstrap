@@ -1,6 +1,7 @@
 #ifndef _NO_SDMMC
 #include "my_disc_io.h"
 #include "my_sdmmc.h"
+#include "np3d_trace.h"
 
 /*-----------------------------------------------------------------
 startUp
@@ -38,7 +39,9 @@ bool my_sdio_ReadSector(sec_t sector, void* buffer, u32 startOffset, u32 endOffs
 	#ifdef DEBUG
 	nocashMessage("readSector internal");
 	#endif
-	return my_sdmmc_sdcard_readsector(sector, buffer, startOffset, endOffset) == 0;
+	int result = my_sdmmc_sdcard_readsector(sector, buffer, startOffset, endOffset);
+	if (result) np3dTraceSdError(sector, 1, result, false);
+	return result == 0;
 }
 
 /*-----------------------------------------------------------------
@@ -52,7 +55,9 @@ bool my_sdio_ReadSectors(sec_t sector, sec_t numSectors, void* buffer) {
 	#ifdef DEBUG
 	nocashMessage("readSectors internal");
 	#endif
-	return my_sdmmc_sdcard_readsectors(sector, numSectors, buffer) == 0;
+	int result = my_sdmmc_sdcard_readsectors(sector, numSectors, buffer);
+	if (result) np3dTraceSdError(sector, numSectors, result, false);
+	return result == 0;
 }
 
 /*-----------------------------------------------------------------
@@ -87,7 +92,9 @@ bool my_sdio_WriteSectors(sec_t sector, sec_t numSectors, const void* buffer) {
 	#ifdef DEBUG
 	nocashMessage("writeSectors internal");
 	#endif
-	return my_sdmmc_sdcard_writesectors(sector, numSectors, buffer) == 0;
+	int result = my_sdmmc_sdcard_writesectors(sector, numSectors, buffer);
+	if (result) np3dTraceSdError(sector, numSectors, result, true);
+	return result == 0;
 }
 
 

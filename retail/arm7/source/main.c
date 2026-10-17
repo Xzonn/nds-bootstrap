@@ -52,6 +52,9 @@ void VcountHandler(void) {
 	inputGetAndSend();
 }
 
+static void VblankHandler(void) {
+}
+
 void set_ctr(u32* ctr){
 	for (int i = 0; i < 4; i++) REG_AES_IV[i] = ctr[3-i];
 }
@@ -85,6 +88,16 @@ void myFIFOValue32Handler(u32 value, void* userdata) {
 	fifoSendValue32(FIFO_USER_02, *(u16*)value);
 }
 
+extern int TWL_ResetSlot1(void);
+
+static bool resetRequestedCard(void)
+{
+	if (!fifoCheckValue32(FIFO_USER_08)) return false;
+	fifoGetValue32(FIFO_USER_08);
+	fifoSendValue32(FIFO_USER_08, TWL_ResetSlot1());
+	return true;
+}
+
 int main(void) {
 	*(u16*)0x02FFFC30 = *(vu16*)0x4004700; // SNDEXCNT (Used for checking for regular DS or DSi/3DS in DS mode)
 
@@ -112,6 +125,7 @@ int main(void) {
 	my_installSystemFIFO();
 
 	irqSet(IRQ_VCOUNT, VcountHandler);
+	irqSet(IRQ_VBLANK, VblankHandler);
 
 	irqEnable(IRQ_VBLANK | IRQ_VCOUNT);
 
@@ -167,7 +181,9 @@ int main(void) {
 		}
 	}
 
-	swiIntrWait(0, IRQ_FIFO_NOT_EMPTY);
+	do {
+		swiIntrWait(0, IRQ_FIFO_NOT_EMPTY);
+	} while (resetRequestedCard());
 
 	SCFGFifoCheck();
 
@@ -177,6 +193,7 @@ int main(void) {
 
 	// Keep the ARM7 mostly idle
 	while (1) {
+		resetRequestedCard();
 		if (*(u32*)(0x2FFFD0C) == 0x454D4D43) {
 			my_sdmmc_get_cid(true, (u32*)0x2FFD7BC);	// Get eMMC CID
 			*(u32*)(0x2FFFD0C) = 0;

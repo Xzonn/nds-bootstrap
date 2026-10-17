@@ -19,12 +19,13 @@
 #include "nds_loader_arm9.h"
 #include "conf_sd.h"
 #include "version.h"
+#include "np3d_vfs.h"
 
 #define REG_SCFG_EXT7 *(u32*)0x02FFFDF0
 
 u8* lz77ImageBuffer = (u8*)0x02004000;
 
-char patchOffsetCacheFilePath[64];
+char patchOffsetCacheFilePath[384];
 std::string wideCheatFilePath;
 std::string cheatFilePath;
 std::string ramDumpPath;
@@ -79,7 +80,7 @@ static int dbg_printf(const char* format, ...) { // static int...
 	}
 
 	static FILE* debugFile;
-	debugFile = fopen(bootstrapOnFlashcard ? "fat:/NDSBTSRP.LOG" : "sd:/NDSBTSRP.LOG", "a");
+	debugFile = fopen(bootstrapOnFlashcard ? "fat:/NDSBTSRP.LOG" : "sd:/nitro-patcher/logs/bootstrap.log", "a");
 
 	va_list args;
 	va_start(args, format);
@@ -377,10 +378,12 @@ static int runNdsFile(configuration* conf) {
 	}
 
 	fifoSendValue32(FIFO_USER_03, 1);
+	np3dBootLog("bootstrap: waiting for ARM7 launch readiness\n");
 	fifoWaitValue32(FIFO_USER_05);
+	np3dBootLog("bootstrap: ARM7 launch ready\n");
 
 	// Logging
-	const char *logFilePath = (conf->sdFound && !conf->b4dsMode ? "sd:/NDSBTSRP.LOG" : "fat:/NDSBTSRP.LOG");
+	const char *logFilePath = (conf->sdFound && !conf->b4dsMode ? "sd:/nitro-patcher/logs/bootstrap.log" : "fat:/NDSBTSRP.LOG");
 	if (conf->logging) {
 		static FILE* loggingFile = fopen(logFilePath, "w");
 		fprintf(loggingFile, "LOGGING MODE\n");
@@ -584,14 +587,20 @@ static int runNdsFile(configuration* conf) {
 
 int main(int argc, char** argv) {
 	fifoSendValue32(FIFO_PM, PM_REQ_SLEEP_DISABLE);
+#if NP3D_LAUNCH_TRACE
+	myConsoleDemoInit();
+	iprintf("Starting bootstrap...\n");
+#endif
 
-	configuration* conf = (configuration*)malloc(sizeof(configuration));
+	configuration* conf = (configuration*)calloc(1, sizeof(configuration));
 
 	int status = loadFromSD(conf, argv[0]);
+	np3dBootLog("bootstrap: preparation result=%d\n", status);
 	sdFound = (conf->sdFound && !conf->b4dsMode);
 	bootstrapOnFlashcard = conf->bootstrapOnFlashcard;
 
 	if (status == 0) {
+		np3dBootLog("bootstrap: starting retail loader\n");
 		status = runNdsFile(conf);
 		if (status != 0) {
 			powerOff(PM_BACKLIGHT_TOP);

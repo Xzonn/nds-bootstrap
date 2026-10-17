@@ -40,6 +40,12 @@ static bool ndmaSlotLocked = false;
 struct mmcdevice handleNAND;
 struct mmcdevice handleSD;
 
+#if NP3D_LAUNCH_TRACE
+int sdmmc_get_ndma_slot(void) {
+	return ndmaSlot;
+}
+#endif
+
 void sdmmc_set_ndma_slot(int slot) {
 	if (ndmaSlotLocked) return;
 	ndmaSlot = slot;

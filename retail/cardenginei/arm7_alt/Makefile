@@ -41,6 +41,7 @@ CFLAGS	:=	-g -Wall -O2\
 
 # ADD -DDEBUG here for logging/debug
 CFLAGS	+=	$(INCLUDE) -DARM7 -DALTERNATIVE -DTWOCARD
+CFLAGS += -DNP3D_LAUNCH_TRACE=$(LAUNCH_TRACE)
 CXXFLAGS	:=	$(CFLAGS) -fno-rtti -fno-exceptions
 
 ASFLAGS	:=	-g $(ARCH) $(INCLUDE)

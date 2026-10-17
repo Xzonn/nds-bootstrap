@@ -38,6 +38,7 @@ CFLAGS	:=	-g -Wall -O2\
 			$(ARCH)
 
 CFLAGS	+=	$(INCLUDE) -DARM7 -std=gnu99 -DTWOCARD -DBUILDFATTABLE -DLOADERTYPE0
+CFLAGS += -DNP3D_LAUNCH_TRACE=$(LAUNCH_TRACE)
 
 ASFLAGS	:=	-g $(ARCH) $(INCLUDE)
 LDFLAGS	=	-nostartfiles -T $(TOPDIR)/load.ld -g $(ARCH) -Wl,--nmagic -Wl,-Map,$(TARGET).map

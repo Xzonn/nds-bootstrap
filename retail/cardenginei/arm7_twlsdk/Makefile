@@ -34,13 +34,14 @@ DATA			:=	data
 #---------------------------------------------------------------------------------
 ARCH	:=	-mthumb -march=armv4t
 
-CFLAGS	:=	-g -Wall -O2\
+CFLAGS	:=	-g -Wall -Os\
 			-mcpu=arm7tdmi -mtune=arm7tdmi -fomit-frame-pointer\
 			-ffast-math \
 			$(ARCH)
 
 # ADD -DDEBUG here for logging/debug
 CFLAGS	+=	$(INCLUDE) -DARM7 -DTWLSDK -DTWOCARD
+CFLAGS += -DNP3D_LAUNCH_TRACE=$(LAUNCH_TRACE)
 CXXFLAGS	:=	$(CFLAGS) -fno-rtti -fno-exceptions
 
 ASFLAGS	:=	-g $(ARCH) $(INCLUDE) -DTWLSDK

@@ -259,6 +259,10 @@ bannerSavPath:
 	.space	64
 version:
 	.space	20
+.align 2
+	.global np3dTraceCluster
+np3dTraceCluster:
+	.word 0
 .align 4
 
 startUp:

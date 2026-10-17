@@ -33,6 +33,12 @@
 #include "my_fat.h"
 #include "card.h"
 #include "debug_file.h"
+#if defined(ARM7) && defined(TWOCARD) && !defined(B4DS)
+#include "np3d_fat.h"
+#include "np3d_rom.h"
+#include "np3d_trace.h"
+#include "nocashMessage.h"
+#endif
 
 #define nextClusterBufferCount 8
 
@@ -894,6 +900,14 @@ void getFileFromCluster(aFile* file, u32 cluster)
 	#else
 	file->fatTableSettings = 0;
 	#endif
+#if defined(ARM7) && defined(TWOCARD) && !defined(B4DS)
+	if (cluster & NP3D_VIRTUAL_CLUSTER) {
+		file->firstCluster = file->currentCluster = cluster & ~NP3D_VIRTUAL_CLUSTER;
+		file->fatTableSettings |= fatVirtual;
+		file->fatTableCache = NULL;
+		file->fatTableCacheSize = 0;
+	}
+#endif
 }
 
 u32 getCachedCluster(aFile * file, int clusterIndex)
@@ -968,6 +982,12 @@ fileReadNonBLocking(buffer, cluster, startOffset, length)
 -----------------------------------------------------------------*/
 bool fileReadNonBLocking (char* buffer, aFile * file, u32 startOffset, u32 length)
 {
+#if defined(ARM7) && defined(TWOCARD) && !defined(B4DS)
+	if (file->fatTableSettings & fatVirtual) {
+		np3dFileRead(buffer, file, startOffset, length);
+		return true;
+	}
+#endif
 	#ifdef DEBUG
 	nocashMessage("fileRead");
     dbg_hexa(buffer);
@@ -1282,6 +1302,9 @@ fileRead(buffer, cluster, startOffset, length)
 -----------------------------------------------------------------*/
 u32 fileRead (char* buffer, aFile* file, u32 startOffset, u32 length)
 {
+#if defined(ARM7) && defined(TWOCARD) && !defined(B4DS)
+	if (file->fatTableSettings & fatVirtual) return np3dFileRead(buffer, file, startOffset, length);
+#endif
 	#ifdef DEBUG
 	nocashMessage("fileRead");
     dbg_hexa(buffer);
@@ -1566,7 +1589,7 @@ u32 fileRead (char* buffer, aFile* file, u32 startOffset, u32 length)
           tonccpy(buffer+dataPos,globalBuffer,length-dataPos);
 		  #endif
           curByte+=length;
-          dataPos+=length;
+          dataPos=length;
 	}
 
       #ifdef DEBUG
@@ -1756,7 +1779,7 @@ u32 fileWrite (const char* buffer, aFile* file, u32 startOffset, u32 length)
         tonccpy(globalBuffer+curByte,buffer+dataPos,length-dataPos);
 		#endif
         curByte+=length;
-        dataPos+=length;
+        dataPos=length;
 
 		#ifdef TWOCARD
 		CARD_WriteSector( curSect + FAT_ClustToSect(file->currentCluster, fileCard2), globalBuffer[fileCard2], fileCard2);
@@ -1768,8 +1791,36 @@ u32 fileWrite (const char* buffer, aFile* file, u32 startOffset, u32 length)
 	return dataPos;
 }
 
+#if defined(ARM7) && defined(TWOCARD) && !defined(B4DS) && defined(BUILDFATTABLE)
+static void reserveVirtualState(aFile* file)
+{
+	if (file->fatTableCache) return;
+	if ((u32)lastClusterCacheUsed > clusterCache + clusterCacheSize - sizeof(Np3dFatState)) {
+#if NP3D_LAUNCH_TRACE
+		extern u32 np3dTraceCluster;
+		np3dTraceFailure(np3dTraceCluster, "ERROR insufficient runtime memory", (u32)lastClusterCacheUsed, clusterCache, clusterCacheSize);
+#endif
+		nocashMessage("NitroPatcher: insufficient runtime memory");
+		while (1);
+	}
+	file->fatTableCache = lastClusterCacheUsed;
+	file->fatTableCacheSize = sizeof(Np3dFatState);
+	np3dStoreRuntime(file->fatTableCache);
+	lastClusterCacheUsed += sizeof(Np3dFatState) / sizeof(u32);
+	currentClusterCacheSize += sizeof(Np3dFatState);
+}
+#endif
+
 void buildFatTableCache (aFile * file)
 {
+#if defined(ARM7) && defined(TWOCARD) && !defined(B4DS)
+	if (file->fatTableSettings & fatVirtual) {
+#ifdef BUILDFATTABLE
+		reserveVirtualState(file);
+#endif
+		return;
+	}
+#endif
 	if (file->fatTableSettings & fatCached) return;
 
     #ifdef DEBUG
@@ -1831,6 +1882,14 @@ void buildFatTableCache (aFile * file)
 #ifdef BUILDFATTABLE
 void buildFatTableCacheCompressed (aFile * file)
 {
+#if defined(ARM7) && defined(TWOCARD) && !defined(B4DS)
+	if (file->fatTableSettings & fatVirtual) {
+#ifdef BUILDFATTABLE
+		reserveVirtualState(file);
+#endif
+		return;
+	}
+#endif
 	if (file->fatTableSettings & fatCached) return;
 
     #ifdef DEBUG

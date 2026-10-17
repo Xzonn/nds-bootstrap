@@ -75,6 +75,10 @@
 #include "loading_screen.h"
 #include "unpatched_funcs.h"
 #include "nocashMessage.h"
+#include "np3d_trace.h"
+#if NP3D_LAUNCH_TRACE
+extern u32 np3dTraceCluster;
+#endif
 
 //#define memcpy __builtin_memcpy
 
@@ -704,6 +708,7 @@ static bool ROMisDsiExclusive(const tNDSHeader* ndsHeader) {
 
 static void loadBinary_ARM7(const tDSiHeader* dsiHeaderTemp, aFile* file) {
 	nocashMessage("loadBinary_ARM7");
+	np3dTraceEvent("loadBinary begin", file->firstCluster, file->fatTableSettings, 0);
 
 	sdmmc_set_ndma_slot(0);
 
@@ -767,11 +772,16 @@ static void loadBinary_ARM7(const tDSiHeader* dsiHeaderTemp, aFile* file) {
 		}
 
 		// Load binaries into memory
+		np3dTraceEvent("virtual header loaded", dsiHeaderTemp->ndshdr.headerCRC16, dsiHeaderTemp->ndshdr.arm9binarySize, dsiHeaderTemp->ndshdr.arm7binarySize);
 		if ((u32)dsiHeaderTemp->ndshdr.arm9destination < 0x02400000) {
+			np3dTraceEvent("loading game ARM9", srlAddr+dsiHeaderTemp->ndshdr.arm9romOffset, dsiHeaderTemp->ndshdr.arm9binarySize, (u32)dsiHeaderTemp->ndshdr.arm9destination);
 			fileRead(dsiHeaderTemp->ndshdr.arm9destination, file, srlAddr+dsiHeaderTemp->ndshdr.arm9romOffset, dsiHeaderTemp->ndshdr.arm9binarySize);
+			np3dTraceEvent("game ARM9 loaded", 0, 0, 0);
 		}
 		if (((u32)dsiHeaderTemp->ndshdr.arm9destination+dsiHeaderTemp->ndshdr.arm9binarySize) < DONOR_ROM_ARM7_LOCATION && *(u32*)DONOR_ROM_ARM7_SIZE_LOCATION == 0) {
+			np3dTraceEvent("loading game ARM7", srlAddr+dsiHeaderTemp->ndshdr.arm7romOffset, dsiHeaderTemp->ndshdr.arm7binarySize, (u32)dsiHeaderTemp->ndshdr.arm7destination);
 			fileRead(dsiHeaderTemp->ndshdr.arm7destination, file, srlAddr+dsiHeaderTemp->ndshdr.arm7romOffset, dsiHeaderTemp->ndshdr.arm7binarySize);
+			np3dTraceEvent("game ARM7 loaded", 0, 0, 0);
 		}
 	}
 
@@ -826,6 +836,7 @@ static void loadBinary_ARM7(const tDSiHeader* dsiHeaderTemp, aFile* file) {
 	}
 
 	sdmmc_set_ndma_slot(4);
+	np3dTraceEvent("loadBinary complete", baseArm9Size, baseArm7Size, baseRomSize);
 }
 
 static module_params_t* loadModuleParams(const tNDSHeader* ndsHeader, bool* foundPtr) {
@@ -1329,6 +1340,7 @@ Modified by Chishm:
  * Removed MultiNDS specific stuff
 --------------------------------------------------------------------------*/
 static void startBinary_ARM7(void) {
+	np3dTraceEvent("starting game processors (a=ARM9 b=ARM7)", (u32)ndsHeader->arm9executeAddress, (u32)ndsHeader->arm7executeAddress, arm9_stateFlag);
 	// Get the ARM9 to boot
 	arm9executeAddress = (u32*)ndsHeader->arm9executeAddress;
 	arm9_stateFlag = ARM9_BOOTBIN;
@@ -1617,25 +1629,33 @@ bool buttonsRemapped(void) {
 
 int arm7_main(void) {
 	nocashMessage("bootloader");
+	np3dTraceBegin(np3dTraceCluster);
+	np3dTraceEvent("ARM7 retail loader entered", REG_SCFG_EXT, REG_EXMEMSTAT, REG_ROMCTRL);
 
 	initMBK();
+	np3dTraceEvent("ARM7 MBK initialized; waiting for ARM9", arm9_stateFlag, 0, 0);
 
 	// Wait for ARM9 to at least start
 	while (arm9_stateFlag < ARM9_START);
+	np3dTraceEvent("ARM9 loader started; clearing memory", arm9_stateFlag, 0, 0);
 
 	// Get ARM7 to clear RAM
 	nocashMessage("Getting ARM7 to clear RAM...\n");
 	resetMemory_ARM7();
+	np3dTraceEvent("ARM7 memory cleared", REG_SCFG_EXT, REG_EXMEMSTAT, REG_AUXSPICNT);
 
 	wifiLedState = i2cReadRegister(0x4A, 0x30);
 
 	// Init card
 	if (dsiSD) {
+		np3dTraceEvent("SD/FAT initialization begin", dsiSD, storedFileCluster, np3dTraceCluster);
 		if (!FAT_InitFiles(true, false)) {
 			nocashMessage("!FAT_InitFiles");
 			errorOutput();
 			//return -1;
 		}
+		np3dTraceReady();
+		np3dTraceEvent("SD/FAT initialization complete", REG_SCFG_EXT, arm9_stateFlag, 0);
 	}
 
 	if (gameOnFlashcard || saveOnFlashcard) {
@@ -1665,7 +1685,9 @@ int arm7_main(void) {
 
 	aFile srParamsFile;
 	getFileFromCluster(&srParamsFile, srParamsFileCluster, gameOnFlashcard);
+	np3dTraceEvent("soft reset parameters read begin", srParamsFileCluster, 0, 0);
 	fileRead((char*)&softResetParams, &srParamsFile, 0, 0x50);
+	np3dTraceEvent("soft reset parameters read complete", softResetParams[0], softResetParams[2], softResetParams[3]);
 	srlFromPageFile = (softResetParams[2] == 0x44414F4C); // 'LOAD'
 	bool softResetParamsFound = (softResetParams[0] != 0xFFFFFFFF || srlFromPageFile || softResetParams[3] != 0);
 	if (softResetParamsFound) {
@@ -1680,6 +1702,7 @@ int arm7_main(void) {
 	// ROM file
 	aFile* romFile = (aFile*)(dsiEnhancedMbk ? ROM_FILE_LOCATION_ALT : ROM_FILE_LOCATION);
 	getFileFromCluster(romFile, storedFileCluster, gameOnFlashcard);
+	np3dTraceEvent("ROM file initialized", romFile->firstCluster, romFile->fatTableSettings, (u32)romFile);
 
 	fileRead((char*)&oldArm7mbk, romFile, 0x1A0, sizeof(u32));
 
@@ -1734,7 +1757,8 @@ int arm7_main(void) {
 		}
 
 		buildFatTableCacheCompressed(romFile);
-		if (!(romFile->fatTableSettings & fatCached)) {
+		np3dTraceEvent("ROM runtime state reserved", (u32)romFile->fatTableCache, romFile->fatTableCacheSize, romFile->fatTableSettings);
+		if (!(romFile->fatTableSettings & (fatCached | fatVirtual))) {
 			dbg_printf("\n");
 			dbg_printf("Cluster cache is above 0x");
 			dbg_hexa(clusterCacheSize);
@@ -1764,6 +1788,7 @@ int arm7_main(void) {
 
 	bool foundModuleParams;
 	module_params_t* moduleParams = loadModuleParams(&dsiHeaderTemp.ndshdr, &foundModuleParams);
+	np3dTraceEvent("module parameters loaded", (u32)moduleParams, moduleParams->sdk_version, foundModuleParams);
 	const bool laterSdk = ((moduleParams->sdk_version >= 0x2008000 && moduleParams->sdk_version != 0x2012774) || moduleParams->sdk_version == 0x20029A8);
 	ltd_module_params_t* ltdModuleParams = (ltd_module_params_t*)patchOffsetCache.ltdModuleParamsOffset;
 	if (dsiHeaderTemp.ndshdr.unitCode > 0) {
@@ -1786,6 +1811,7 @@ int arm7_main(void) {
     dbg_printf("\n");
 
 	ndsHeader = loadHeader(&dsiHeaderTemp, moduleParams, dsiModeConfirmed);
+	np3dTraceEvent("boot header prepared", (u32)ndsHeader, dsiModeConfirmed, 0);
 
 	if (!isDSiWare && srlAddr == 0 && memcmp(romTid, "UBR", 3) != 0 && memcmp(romTid, "HND", 3) != 0 && memcmp(romTid, "HNE", 3) != 0 && (softResetParams[0] == 0 || softResetParams[0] == 0xFFFFFFFF)) {
 		esrbOutput();
@@ -1853,7 +1879,9 @@ int arm7_main(void) {
 	}
 
 	//if (gameOnFlashcard || !isDSiWare || !dsiWramAccess) {
+		np3dTraceEvent("ARM9 decompression begin", 0, 0, 0);
 		ensureBinaryDecompressed(&dsiHeaderTemp.ndshdr, moduleParams, ltdModuleParams, true);
+		np3dTraceEvent("ARM9 decompression complete", 0, 0, 0);
 	//}
 	if (decrypt_arm9(&dsiHeaderTemp)) {
 		dbg_printf("Secure area decrypted successfully");
@@ -1861,6 +1889,7 @@ int arm7_main(void) {
 		dbg_printf("Secure area already decrypted");
 	}
 	dbg_printf("\n");
+	np3dTraceEvent("secure area decryption complete", 0, 0, 0);
 
 	// Calculate overlay pack size
 	if (baseArm9OvlSrc > baseArm7Off) {
@@ -1883,6 +1912,7 @@ int arm7_main(void) {
     dbg_printf("\n");*/
 
 	my_readUserSettings(ndsHeader); // Header has to be loaded first
+	np3dTraceEvent("user settings loaded", 0, 0, 0);
 
 	baseChipID = getChipId(pkmnHeader ? (tNDSHeader*)NDS_HEADER_POKEMON : ndsHeader, moduleParams);
 
@@ -2220,7 +2250,9 @@ int arm7_main(void) {
 		if (!bootstrapOnFlashcard && !gameOnFlashcard && !saveOnFlashcard && REG_SCFG_EXT != 0 && !(REG_SCFG_MC & BIT(0))) {
 			if (specialCard || saveRelocation == FALSE) {
 				// Enable Slot-1 for games that use IR
+				np3dTraceEvent("enabling physical Slot-1", REG_SCFG_MC, REG_ROMCTRL, REG_AUXSPICNT);
 				my_enableSlot1();
+				np3dTraceEvent("physical Slot-1 enabled", REG_SCFG_MC, REG_ROMCTRL, REG_AUXSPICNT);
 			} else {
 				my_disableSlot1();
 			}
@@ -2235,6 +2267,7 @@ int arm7_main(void) {
 		}
 
 		const bool twlTouch = (cdcReadReg(CDC_SOUND, 0x22) == 0xF0);
+		np3dTraceEvent("touchscreen setup begin", twlTouch, dsiModeConfirmed, 0);
 
 		if (!twlTouch || !dsiModeConfirmed || !ROMsupportsDsiMode(&dsiHeaderTemp.ndshdr) || (ROMsupportsDsiMode(&dsiHeaderTemp.ndshdr) && !(*(u8*)0x02FFE1BF & BIT(0)))) {
 			NDSTouchscreenMode();
@@ -2283,12 +2316,16 @@ int arm7_main(void) {
 		}
 
 		const bool useApPatch = (srlAddr == 0 && !srlFromPageFile && apPatchFileCluster != 0 && !apPatchIsCheat && apPatchSize > 0 && apPatchSize <= 0x1000);
+		np3dTraceEvent("card engines prepared", ce7Location, ce7Size, ce9size);
+		np3dTraceEvent("AP selection (a=enabled b=size c=offset)", useApPatch, apPatchSize, apPatchOffset);
 
 		if (useApPatch) {
 			aFile apPatchFile;
 			getFileFromCluster(&apPatchFile, apPatchFileCluster, bootstrapOnFlashcard);
 			dbg_printf("AP-fix found\n");
+			np3dTraceEvent("AP file read begin", apPatchFileCluster, apPatchOffset, apPatchSize);
 			fileRead((char*)IPS_LOCATION, &apPatchFile, apPatchOffset, apPatchSize);
+			np3dTraceEvent("AP file read complete", *(u32*)IPS_LOCATION, *(u8*)(IPS_LOCATION+apPatchSize-1), 0);
 			if (*(u8*)(IPS_LOCATION+apPatchSize-1) != 0xA9) {
 				overlayPatch = ipsHasOverlayPatch(ndsHeader, (u8*)IPS_LOCATION);
 			}
@@ -2369,8 +2406,10 @@ int arm7_main(void) {
 		}
 
 		// If possible, set to load ROM into RAM
-		const u32 ROMinRAM = isROMLoadableInRAM(&dsiHeaderTemp, &dsiHeaderTemp.ndshdr, romTid, moduleParams, usesCloneboot);
+		const u32 ROMinRAM = (romFile->fatTableSettings & fatVirtual) ? 0
+			: isROMLoadableInRAM(&dsiHeaderTemp, &dsiHeaderTemp.ndshdr, romTid, moduleParams, usesCloneboot);
 
+		np3dTraceEvent("card engine patching begin", ce7Location, ce9Location, ROMinRAM);
 		errorCode = patchCardNds(
 			(cardengineArm7*)ce7Location,
 			(cardengineArm9*)ce9Location,
@@ -2384,6 +2423,7 @@ int arm7_main(void) {
 			saveFileCluster,
 			saveSize
 		);
+		np3dTraceEvent("card engine patch result", errorCode, ce7Location, ce9Location);
 		if (errorCode == ERR_NONE) {
 			dbg_printf("Card patch successful\n\n");
 		} else {
@@ -2391,8 +2431,10 @@ int arm7_main(void) {
 			errorOutput();
 		}
 		patchBinary((cardengineArm9*)ce9Location, ndsHeader, moduleParams);
+		np3dTraceEvent("card engine patching complete", errorCode, ce7Location, ce9Location);
 
 		buildRomMap(ndsHeader, moduleParams, laterSdk, usesCloneboot, ROMinRAM);
+		np3dTraceEvent("ARM7 card hook begin", saveRelocation, savFile->firstCluster, baseChipID);
 
 		errorCode = hookNdsRetailArm7(
 			(cardengineArm7*)ce7Location,
@@ -2432,9 +2474,11 @@ int arm7_main(void) {
 			// dbg_printf("Card hook 7 successful\n\n");
 		} else {
 			// dbg_printf("Card hook 7 failed");
+			np3dTraceEvent("ERROR ARM7 card hook failed", errorCode, ce7Location, 0);
 			errorOutput();
 		}
 
+		np3dTraceEvent("ARM7 card hook complete; ARM9 hook begin", errorCode, 0, 0);
 		hookNdsRetailArm9(
 			(cardengineArm9*)ce9Location,
 			ndsHeader,
@@ -2453,6 +2497,7 @@ int arm7_main(void) {
 		);
 
 		patchOffsetCacheFileNewCrc = swiCRC16(0xFFFF, &patchOffsetCache, sizeof(patchOffsetCacheContents));
+		np3dTraceEvent("ARM9 card hook complete", 0, 0, 0);
 		if (patchOffsetCacheFileNewCrc != patchOffsetCacheFilePrevCrc) {
 			fileWrite((char*)&patchOffsetCache, &patchOffsetCacheFile, 0, sizeof(patchOffsetCacheContents));
 		}
@@ -2463,23 +2508,29 @@ int arm7_main(void) {
 		}
 
 		if (ROMinRAM) {
+			np3dTraceEvent("full ROM preload begin", romSize, 0, 0);
 			loadROMintoRAM(ndsHeader, moduleParams, laterSdk, romFile, usesCloneboot);
 			if (ROMsupportsDsiMode(ndsHeader) && dsiModeConfirmed) {
 				loadIOverlaysintoRAM(&dsiHeaderTemp, romFile, usesCloneboot);
 			}
 		} else if ((ROMsupportsDsiMode(ndsHeader) && !isDSiWare) || strncmp(romTid, "UBR", 3) != 0) {
+			np3dTraceEvent("overlay preload begin", overlayPatch, overlaysSize, 0);
 			loadOverlaysintoRAM(ndsHeader, moduleParams, romFile);
 		}
+		np3dTraceEvent("ROM/overlay preload complete", 0, 0, 0);
 
 		if ((ROMsupportsDsiMode(ndsHeader) || isSdk5(moduleParams)) && usesCloneboot) {
 			fileRead((char*)((ROMsupportsDsiMode(ndsHeader) && dsiModeConfirmed) ? 0x02FFDC00 : 0x027FFEC0), romFile, clonebootOffset, 0x88); // Pre-load RSA key
 		}
 
 		if (useApPatch) {
+			np3dTraceEvent("AP application begin", apPatchSize, overlayPatch, ROMinRAM);
 			if (applyIpsPatch(ndsHeader, (u8*)IPS_LOCATION, (*(u8*)(IPS_LOCATION+apPatchSize-1) == 0xA9), laterSdk, isSdk5(moduleParams), ROMinRAM, cacheBlockSize)) {
 				dbg_printf("AP-fix applied\n");
+				np3dTraceEvent("AP application successful", apPatchSize, 0, 0);
 			} else {
 				dbg_printf("Failed to apply AP-fix\n");
+				np3dTraceEvent("ERROR AP application failed", apPatchSize, IPS_LOCATION, 0);
 			}
 			dma_twlFill32(0, 0, (u32*)IPS_LOCATION, apPatchSize);	// Clear IPS patch
 		}
@@ -2514,11 +2565,15 @@ int arm7_main(void) {
 		}
 
 		if (!ROMinRAM && ((ROMsupportsDsiMode(ndsHeader) && !isDSiWare && (!dsiModeConfirmed || consoleModel > 0)) || !ROMsupportsDsiMode(ndsHeader))) {
+			np3dTraceEvent("partial ROM preload begin", dataToPreloadFullSize(), 0, 0);
 			loadROMPartIntoRAM(ndsHeader, romFile);
+			np3dTraceEvent("partial ROM preload complete", dataToPreloadFullSize(), 0, 0);
 		}
 
 		if (!ROMinRAM && dsiWramAccess && !dsiWramMirrored && (!ROMsupportsDsiMode(ndsHeader) || !dsiModeConfirmed)) {
+			np3dTraceEvent("NitroFS metadata preload begin", baseFntOff, baseFatOff, baseFatSize);
 			loadNitroFileInfoIntoRAM(ndsHeader, romFile);
+			np3dTraceEvent("NitroFS metadata preload complete", 0, 0, 0);
 		}
 
 		if (isDSiWare && dsiWareAsSlot1) {
@@ -2535,10 +2590,12 @@ int arm7_main(void) {
 			aFile pageFile;
 			getFileFromCluster(&pageFile, pageFileCluster, bootstrapOnFlashcard);
 
+			np3dTraceEvent("page file write begin", pageFileCluster, iUncompressedSize, newArm7binarySize);
 			fileWrite((char*)ndsHeader->arm9destination, &pageFile, 0x14000, iUncompressedSize);
 			fileWrite((char*)ndsHeader->arm7destination, &pageFile, 0x2C0000, newArm7binarySize);
 			fileWrite((char*)&iUncompressedSize, &pageFile, 0x5FFFF0, sizeof(u32));
 			fileWrite((char*)&newArm7binarySize, &pageFile, 0x5FFFF4, sizeof(u32));
+			np3dTraceEvent("page file write complete", 0, 0, 0);
 			if (ROMsupportsDsiMode(ndsHeader) && dsiModeConfirmed) {
 				fileWrite((char*)(*(u32*)0x02FFE1C8), &pageFile, 0x300000, iUncompressedSizei);
 				fileWrite((char*)(*(u32*)0x02FFE1D8), &pageFile, 0x580000, newArm7ibinarySize);
@@ -2567,12 +2624,15 @@ int arm7_main(void) {
 	}
 
 	toncset16((u32*)IMAGES_LOCATION, 0, (256*192)*3);	// Clear nds-bootstrap images
+	np3dTraceEvent("clear loading screen begin", arm9_stateFlag, 0, 0);
 	clearScreen();
+	np3dTraceEvent("clear loading screen complete", arm9_stateFlag, 0, 0);
 
 	i2cReadRegister(0x4A, 0x10);	// Clear accidential POWER button press
 
 	arm9_stateFlag = ARM9_SETSCFG;
 	while (arm9_stateFlag != ARM9_READY) {};
+	np3dTraceEvent("ARM9 SCFG configured", arm9_SCFG_EXT, arm9_SCFG_CLK, REG_SCFG_EXT);
 
 	{
 		aFile pageFile;
@@ -2586,6 +2646,7 @@ int arm7_main(void) {
 
 	// dbg_printf("Starting the NDS file...");
     setMemoryAddress(ndsHeader, moduleParams);
+	np3dTraceEvent("game boot memory prepared", baseChipID, baseHeaderCRC, saveRelocation);
 
 	if (0 == (REG_KEYINPUT & (KEY_L | KEY_R | KEY_DOWN | KEY_A))) {
 		aFile ramDumpFile;

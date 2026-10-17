@@ -32,6 +32,7 @@
 #include "igm_text.h"
 #include "locations.h"
 #include "version.h"
+#include "np3d_vfs.h"
 
 #include "nandio.h"
 #include "f_xy.h"
@@ -68,7 +69,7 @@ void decrypt_modcrypt_area(dsi_context* ctx, u8 *buffer, unsigned int size)
 
 extern const DISC_INTERFACE __my_io_dsisd;
 
-extern char patchOffsetCacheFilePath[64];
+extern char patchOffsetCacheFilePath[384];
 extern std::string wideCheatFilePath;
 extern std::string cheatFilePath;
 extern std::string ramDumpPath;
@@ -217,7 +218,7 @@ static void createRamDumpBin(configuration* conf) {
 	if (dsiFeatures() && !conf->b4dsMode)
 	{
 		ramDumpPath = conf->bootstrapOnFlashcard ? "fat:" : "sd:";
-		ramDumpPath.append("/_nds/nds-bootstrap/ramDump.bin");
+		ramDumpPath.append("/nitro-patcher/runtime/bootstrap/ramDump.bin");
 		ramDumpSize = 0x02000000;
 	}
 	else {
@@ -254,7 +255,7 @@ static void createApFixOverlayBin(configuration* conf) {
 	if (dsiFeatures() && !conf->b4dsMode)
 	{
 		apFixOverlaysPath = conf->gameOnFlashcard ? "fat:" : "sd:";
-		apFixOverlaysPath.append("/_nds/nds-bootstrap/apFixOverlays.bin");
+		apFixOverlaysPath.append("/nitro-patcher/runtime/bootstrap/apFixOverlays.bin");
 	}
 	else {
 		apFixOverlaysPath = "fat:/_nds/nds-bootstrap/apfixOverlays.bin";
@@ -299,7 +300,7 @@ static void loadColorLut(const bool isRunFromFlashcard, const bool phatColors) {
 		colorTable = true;
 	}
 
-	const char* txtPath = isRunFromFlashcard ? "fat:/_nds/colorLut/currentSetting.txt" : "sd:/_nds/colorLut/currentSetting.txt";
+	const char* txtPath = isRunFromFlashcard ? "fat:/_nds/colorLut/currentSetting.txt" : "sd:/nitro-patcher/config/colorLut/currentSetting.txt";
 	if (access(txtPath, F_OK) == 0) {
 		// Load color LUT
 		char lutName[128] = {0};
@@ -308,7 +309,7 @@ static void loadColorLut(const bool isRunFromFlashcard, const bool phatColors) {
 		fclose(file);
 
 		char colorLutPath[256];
-		sprintf(colorLutPath, "%s:/_nds/colorLut/%s.lut", isRunFromFlashcard ? "fat" : "sd", lutName);
+		sprintf(colorLutPath, "%s:/nitro-patcher/config/colorLut/%s.lut", isRunFromFlashcard ? "fat" : "sd", lutName);
 
 		if (getFileSize(colorLutPath) == 0x10000) {
 			file = fopen(colorLutPath, "rb");
@@ -734,17 +735,28 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 		iprintf("FAT init failed!\n");
 		return -1;
 	}
+	np3dBootLog("bootstrap: SD mounted; SCFG_EXT9=%08lX SCFG_EXT7=%08lX EXMEMCNT=%04X\n",
+		(unsigned long)REG_SCFG_EXT, (unsigned long)REG_SCFG_EXT7, REG_EXMEMCNT);
+	int virtualRomStatus = np3dDeviceInit();
+	np3dBootLog("bootstrap: virtual ROM initialization result=%d\n", virtualRomStatus);
+	if (virtualRomStatus != 0) {
+		myConsoleDemoInit();
+		iprintf("Cannot initialize the patched Game Card.\nError %d\n", virtualRomStatus);
+		return -1;
+	}
 	nocashMessage("fatInitDefault");
 
 	if ((strncmp (bootstrapPath, "sd:/", 4) != 0) && (strncmp (bootstrapPath, "fat:/", 5) != 0)) {
-		//bootstrapPath = "sd:/_nds/nds-bootstrap-release.nds";
-		bootstrapPath = conf->sdFound ? "sd:/_nds/nds-bootstrap-nightly.nds" : "fat:/_nds/nds-bootstrap-nightly.nds";
+		myConsoleDemoInit();
+		iprintf("Invalid bootstrap path.\n");
+		return -1;
 	}
 	if (!nitroFSInit(bootstrapPath)) {
 		myConsoleDemoInit();
 		iprintf("nitroFSInit failed!\n");
 		return -1;
 	}
+	np3dBootLog("bootstrap: NitroFS mounted path=%s\n", bootstrapPath);
 	
 	{
 		struct stat st;
@@ -841,7 +853,9 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 
 	conf->bootstrapOnFlashcard = ((bootstrapPath[0] == 'f' && bootstrapPath[1] == 'a' && bootstrapPath[2] == 't') || !conf->sdFound);
 
-	load_conf(conf, conf->bootstrapOnFlashcard ? "fat:/_nds/nds-bootstrap.ini" : "sd:/_nds/nds-bootstrap.ini");
+	load_conf(conf, "sd:/nitro-patcher/config/nds-bootstrap.ini");
+	np3dBootLog("bootstrap: configuration loaded path=%s saveRelocation=%d dsiMode=%d console=%d\n",
+		conf->ndsPath, conf->saveRelocation, conf->dsiMode, conf->consoleModel);
 
 	conf->initDisc = (REG_SCFG_EXT == 0);
 
@@ -915,9 +929,9 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 	}
 
 	if (conf->sdFound) {
-		mkdir("sd:/_nds", 0777);
-		mkdir("sd:/_nds/nds-bootstrap", 0777);
-		mkdir("sd:/_nds/nds-bootstrap/patchOffsetCache", 0777);
+		mkdir("sd:/nitro-patcher/runtime", 0777);
+		mkdir("sd:/nitro-patcher/runtime/bootstrap", 0777);
+		mkdir("sd:/nitro-patcher/runtime/bootstrap/patchOffsetCache", 0777);
 	}
 	if (flashcardFound) {
 		mkdir("fat:/_nds", 0777);
@@ -925,12 +939,13 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 		mkdir("fat:/_nds/nds-bootstrap/patchOffsetCache", 0777);
 	}
 
-	pageFilePath = "sd:/_nds/pagefile.sys";
+	pageFilePath = "sd:/nitro-patcher/runtime/bootstrap/pagefile.sys";
 	if (conf->b4dsMode || conf->bootstrapOnFlashcard) {
 		pageFilePath = "fat:/_nds/pagefile.sys";	
 	}
 
 	conf->romSize = getFileSize(conf->ndsPath);
+	np3dBootLog("bootstrap: virtual ROM size=%lu; reading header\n", (unsigned long)conf->romSize);
 
 	/* {
 		struct statvfs st;
@@ -1020,6 +1035,8 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 		fread(&prvSize, sizeof(u32), 1, ndsFile);
 	}
 
+	np3dBootLog("bootstrap: virtual header tid=%s crc=%04X unit=%u ARM9=%08lX ARM7=%lu\n",
+		romTid, headerCRC, unitCode, (unsigned long)ndsArm9Offset, (unsigned long)ndsArm7Size);
 	conf->useSdk20Donor = (memcmp(romTid, "AYI", 3) == 0 && unitCode == 0 && ndsArm7Size == 0x25F70);
 
 	u32 donorArm7iOffset = 0;
@@ -1057,17 +1074,17 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 
 	if (conf->isDSiWare || (accessControl & BIT(4))) {
 		if (romTid[3] == 'K') {
-			sharedFontPath = (conf->bootstrapOnFlashcard || conf->b4dsMode) ? "fat:/_nds/nds-bootstrap/KORFontTable.dat" : "sd:/_nds/nds-bootstrap/KORFontTable.dat";
+			sharedFontPath = (conf->bootstrapOnFlashcard || conf->b4dsMode) ? "fat:/_nds/nds-bootstrap/KORFontTable.dat" : "sd:/nitro-patcher/runtime/bootstrap/KORFontTable.dat";
 			if (access(sharedFontPath.c_str(), F_OK) == 0) {
 				conf->valueBits3 |= BIT(5);
 			}
 		} else if (romTid[3] == 'C') {
-			sharedFontPath = (conf->bootstrapOnFlashcard || conf->b4dsMode) ? "fat:/_nds/nds-bootstrap/CHNFontTable.dat" : "sd:/_nds/nds-bootstrap/CHNFontTable.dat";
+			sharedFontPath = (conf->bootstrapOnFlashcard || conf->b4dsMode) ? "fat:/_nds/nds-bootstrap/CHNFontTable.dat" : "sd:/nitro-patcher/runtime/bootstrap/CHNFontTable.dat";
 			if (access(sharedFontPath.c_str(), F_OK) == 0) {
 				conf->valueBits3 |= BIT(4);
 			}
 		} else {
-			sharedFontPath = (conf->bootstrapOnFlashcard || conf->b4dsMode) ? "fat:/_nds/nds-bootstrap/TWLFontTable.dat" : "sd:/_nds/nds-bootstrap/TWLFontTable.dat";
+			sharedFontPath = (conf->bootstrapOnFlashcard || conf->b4dsMode) ? "fat:/_nds/nds-bootstrap/TWLFontTable.dat" : "sd:/nitro-patcher/runtime/bootstrap/TWLFontTable.dat";
 			if (access(sharedFontPath.c_str(), F_OK) == 0) {
 				conf->valueBits3 |= BIT(3);
 			}
@@ -1396,7 +1413,12 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 		fclose(ndsFile);
 		fclose(donorNdsFile);
 
-		if (!conf->bootstrapOnFlashcard && !conf->gameOnFlashcard && !conf->saveOnFlashcard) {
+		if (strcmp(conf->ndsPath, "np3d:/rom.nds") == 0) {
+			const char* cardTid = (const char*)&np3dLaunchInfo()->cardCode;
+			conf->specialCard = (cardTid[0] == 'I' || memcmp(cardTid, "UZP", 3) == 0
+				|| memcmp(cardTid, "HND", 3) == 0 || memcmp(cardTid, "UEI", 3) == 0);
+			if (conf->specialCard) conf->valueBits2 |= BIT(4);
+		} else if (!conf->bootstrapOnFlashcard && !conf->gameOnFlashcard && !conf->saveOnFlashcard) {
 			if (romTid[0] != 'I' && memcmp(romTid, "UZP", 3) != 0 && memcmp(romTid, "HND", 3) != 0 && memcmp(romTid, "UEI", 3) != 0) {
 				disableSlot1();
 			} else {
@@ -1472,12 +1494,12 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 			srBackendId[0] = srFrontendId[0] = *(u32*)0x02000428;
 			srBackendId[1] = srFrontendId[1] = *(u32*)0x0200042C;
 		} else {
-			cebin = fopen("sd:/_nds/nds-bootstrap/srBackendId.bin", "rb");
+			cebin = fopen("sd:/nitro-patcher/runtime/bootstrap/srBackendId.bin", "rb");
 			if (cebin) {
 				fread(&srBackendId, sizeof(u32), 2, cebin);
 				fclose(cebin);
 			}
-			cebin = fopen("sd:/_nds/nds-bootstrap/srFrontendId.bin", "rb");
+			cebin = fopen("sd:/nitro-patcher/runtime/bootstrap/srFrontendId.bin", "rb");
 			if (cebin) {
 				fread(&srFrontendId, sizeof(u32), 2, cebin);
 				fclose(cebin);
@@ -1807,7 +1829,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 		if (rc == 0) {
 			getIgmStrings(conf, false);
 
-			screenshotPath = "sd:/_nds/nds-bootstrap/screenshots.tar";
+			screenshotPath = "sd:/nitro-patcher/runtime/bootstrap/screenshots.tar";
 			if (conf->bootstrapOnFlashcard) {
 				screenshotPath = "fat:/_nds/nds-bootstrap/screenshots.tar";
 			}
@@ -1937,8 +1959,8 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 			wideCheatFilePath = "fat:/_nds/nds-bootstrap/wideCheatData.bin";
 			cheatFilePath = "fat:/_nds/nds-bootstrap/cheatData.bin";
 		} else {
-			wideCheatFilePath = "sd:/_nds/nds-bootstrap/wideCheatData.bin";
-			cheatFilePath = "sd:/_nds/nds-bootstrap/cheatData.bin";
+			wideCheatFilePath = "sd:/nitro-patcher/runtime/bootstrap/wideCheatData.bin";
+			cheatFilePath = "sd:/nitro-patcher/runtime/bootstrap/cheatData.bin";
 		}
 
 		conf->saveSize = getFileSize(conf->savPath);
@@ -1992,7 +2014,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 
 		if (displayEsrb) {
 			// Read ESRB rating and descriptor(s) for current title
-			bootstrapImages = fopen(conf->bootstrapOnFlashcard ? "fat:/_nds/nds-bootstrap/esrb.bin" : "sd:/_nds/nds-bootstrap/esrb.bin", "rb");
+			bootstrapImages = fopen(conf->bootstrapOnFlashcard ? "fat:/_nds/nds-bootstrap/esrb.bin" : "sd:/nitro-patcher/runtime/bootstrap/esrb.bin", "rb");
 			if (bootstrapImages) {
 				// Read width & height
 				/*fseek(bootstrapImages, 0x12, SEEK_SET);
@@ -2523,7 +2545,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 
 		if (displayEsrb) {
 			// Read ESRB rating and descriptor(s) for current title
-			bootstrapImages = fopen(conf->bootstrapOnFlashcard ? "fat:/_nds/nds-bootstrap/esrb.bin" : "sd:/_nds/nds-bootstrap/esrb.bin", "rb");
+			bootstrapImages = fopen(conf->bootstrapOnFlashcard ? "fat:/_nds/nds-bootstrap/esrb.bin" : "sd:/nitro-patcher/runtime/bootstrap/esrb.bin", "rb");
 			if (bootstrapImages) {
 				// Read width & height
 				/*fseek(bootstrapImages, 0x12, SEEK_SET);
@@ -2615,12 +2637,14 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 		// loadApFixPostCardRead(conf, bootstrapPath, romTid, headerCRC);
 	}
 	loadMobiclipOffsets(conf, bootstrapPath, romTid, romVersion, headerCRC);
+	np3dBootLog("bootstrap: compatibility patches selected AP=%lu bytes offset=%08lX loader=%u\n",
+		(unsigned long)conf->apPatchSize, (unsigned long)conf->apPatchOffset, conf->loaderType);
 
 	if (conf->loaderType < 2 && (strcmp(romTid, "NTRJ") == 0) && (headerCRC == 0x9B41 || headerCRC == 0x69D6)) { // Use bootloader2 for Shantae: Risky's Revenge (USA) (Review Build)
 		conf->loaderType = 2;
 	}
 
-	srParamsFilePath = "sd:/_nds/nds-bootstrap/softResetParams.bin";
+	srParamsFilePath = "sd:/nitro-patcher/runtime/bootstrap/softResetParams.bin";
 	if (conf->gameOnFlashcard) {
 		srParamsFilePath = "fat:/_nds/nds-bootstrap/softResetParams.bin";
 	}
@@ -2847,7 +2871,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 		fclose(ndsFile);
 	}
 
-	sprintf(patchOffsetCacheFilePath, "%s:/_nds/nds-bootstrap/patchOffsetCache/%s-%04X.bin", conf->gameOnFlashcard ? "fat" : "sd", romTid, headerCRC);
+	snprintf(patchOffsetCacheFilePath, sizeof(patchOffsetCacheFilePath), "%s/patch-offsets.bin", np3dLaunchInfo()->cachePath);
 
 	if (access(patchOffsetCacheFilePath, F_OK) != 0) {
 		char buffer[0x200] = {0};
@@ -2858,6 +2882,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 	}
 
 	// Create RAM dump binary
+	np3dBootLog("bootstrap: creating runtime files\n");
 	createRamDumpBin(conf);
 
 	// Create AP-fixed overlay binary
