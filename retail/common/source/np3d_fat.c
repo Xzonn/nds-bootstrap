@@ -14,6 +14,8 @@ static Np3dFatState bootState;
 #endif
 static Np3dFatState* state;
 static u32 descriptorCluster;
+static Np3dRead request;
+static aFile* requestFile;
 #if NP3D_LAUNCH_TRACE && defined(BUILDFATTABLE)
 extern u32 np3dTraceCluster;
 static u32 tracedSources;
@@ -187,6 +189,52 @@ u32 np3dFileRead(char* output, aFile* file, u32 offset, u32 length)
 #endif
     leaveCriticalSection(interrupts);
     return length;
+}
+
+bool np3dFileReadPending(void)
+{
+    return request.length != 0;
+}
+
+bool np3dResumeFileRead(void)
+{
+    int interrupts = enterCriticalSection();
+    u16 spi = REG_AUXSPICNT;
+    if (request.length && ((spi & CARD_SPI_BUSY)
+        || (spi & (CARD_SPI_ENABLE | CARD_SPI_HOLD)) == (CARD_SPI_ENABLE | CARD_SPI_HOLD))) {
+        leaveCriticalSection(interrupts);
+        return false;
+    }
+    if (requestFile->fatTableSettings & fatVirtual) {
+        initialize(requestFile);
+        if (!np3dRomReadStep(&state->rom, &request)) {
+            readFailure("ERROR asynchronous virtual ROM read", request.offset, request.length, (u32)request.output);
+        }
+    } else if (request.length) {
+        u32 take = 0x1000 - (request.offset & 0xfff);
+        if (take > request.length) take = request.length;
+        if (fileRead((char*)request.output, requestFile, request.offset, take) != take) {
+            readFailure("ERROR asynchronous SD file read", request.offset, take, (u32)request.output);
+        }
+        request.offset += take;
+        request.output += take;
+        request.length -= take;
+    }
+    bool complete = !request.length;
+    leaveCriticalSection(interrupts);
+    return complete;
+}
+
+bool np3dFileReadNonBlocking(char* output, aFile* file, u32 offset, u32 length)
+{
+    int interrupts = enterCriticalSection();
+    requestFile = file;
+    request.offset = offset;
+    request.length = length;
+    request.output = (u8*)output;
+    bool complete = np3dResumeFileRead();
+    leaveCriticalSection(interrupts);
+    return complete;
 }
 
 bool np3dOriginalCardCode(aFile* file, u32* code)

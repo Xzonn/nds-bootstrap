@@ -15,6 +15,9 @@ typedef struct {
 } Np3dFatState;
 
 u32 np3dFileRead(char* output, aFile* file, u32 offset, u32 length);
+bool np3dFileReadNonBlocking(char* output, aFile* file, u32 offset, u32 length);
+bool np3dResumeFileRead(void);
+bool np3dFileReadPending(void);
 bool np3dOriginalCardCode(aFile* file, u32* code);
 #ifdef BUILDFATTABLE
 void np3dStoreRuntime(void* output);

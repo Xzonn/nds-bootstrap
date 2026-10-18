@@ -464,11 +464,15 @@ static void load_conf(configuration* conf, const char* fn) {
 	fseek(romFile, 0xC, SEEK_SET);
 	fread(gameTid, 4, 1, romFile);
 	fclose(romFile);
+	if (strcmp(conf->ndsPath, "np3d:/rom.nds") == 0) {
+		memcpy(gameTid, &np3dLaunchInfo()->cardCode, 4);
+	}
 
 	// Async card read
 	conf->asyncCardRead = strtol(config_file.fetch("NDS-BOOTSTRAP", "ASYNC_CARD_READ", "-1").c_str(), NULL, 0);
 	if (conf->asyncCardRead == -1) {
-#ifdef DEFAULT_ASYNC_CARD_READ
+			conf->asyncCardRead = 1;
+#if defined(DEFAULT_ASYNC_CARD_READ) || defined(NP3D_FRONTEND)
 			// TODO: If the list gets large enough, switch to bsearch().
 			for (unsigned int i = 0; i < sizeof(asyncReadExcludeList)/sizeof(asyncReadExcludeList[0]); i++) {
 				if (memcmp(gameTid, asyncReadExcludeList[i], 3) == 0) {
@@ -477,9 +481,7 @@ static void load_conf(configuration* conf, const char* fn) {
 					break;
 				}
 			}
-			conf->asyncCardRead = 1;
 #endif
-			conf->asyncCardRead = 1;
 	}
 
 	// Card read DMA
@@ -489,8 +491,10 @@ static void load_conf(configuration* conf, const char* fn) {
 			break;
 		case 1:
 			conf->cardReadDMA = true;
+			break;
 		default:
 #ifdef DEFAULT_CARD_READ_DMA
+			conf->cardReadDMA = true;
 			// TODO: If the list gets large enough, switch to bsearch().
 			for (unsigned int i = 0; i < sizeof(cardReadDMAExcludeList)/sizeof(cardReadDMAExcludeList[0]); i++) {
 				if (memcmp(gameTid, cardReadDMAExcludeList[i], 3) == 0) {
@@ -499,8 +503,6 @@ static void load_conf(configuration* conf, const char* fn) {
 					break;
 				}
 			}
-			// default settings if not in list
-			conf->cardReadDMA = true;
 #else
 			conf->cardReadDMA = false;
 #endif

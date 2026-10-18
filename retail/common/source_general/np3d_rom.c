@@ -102,4 +102,16 @@ bool np3dRomRead(Np3dRom* rom, uint32_t offset, void* output, uint32_t length)
     }
     return true;
 }
+
+bool np3dRomReadStep(Np3dRom* rom, Np3dRead* request)
+{
+    if (request->offset > rom->launch.romSize || request->length > rom->launch.romSize - request->offset) return false;
+    uint32_t take = 0x1000 - (request->offset & 0xfff);
+    if (take > request->length) take = request->length;
+    if (!np3dRomRead(rom, request->offset, request->output, take)) return false;
+    request->offset += take;
+    request->output += take;
+    request->length -= take;
+    return true;
+}
 #endif

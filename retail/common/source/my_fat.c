@@ -984,8 +984,7 @@ bool fileReadNonBLocking (char* buffer, aFile * file, u32 startOffset, u32 lengt
 {
 #if defined(ARM7) && defined(TWOCARD) && !defined(B4DS)
 	if (file->fatTableSettings & fatVirtual) {
-		np3dFileRead(buffer, file, startOffset, length);
-		return true;
+		return np3dFileReadNonBlocking(buffer, file, startOffset, length);
 	}
 #endif
 	#ifdef DEBUG
@@ -1044,6 +1043,9 @@ bool fileReadNonBLocking (char* buffer, aFile * file, u32 startOffset, u32 lengt
 
 bool resumeFileRead()
 {
+#if defined(ARM7) && defined(TWOCARD) && !defined(B4DS)
+	if (np3dFileReadPending()) return np3dResumeFileRead();
+#endif
     if(context.cmd == 0 || CARD_CheckCommand(context.cmd))
     {
         if(context.chunks>0)

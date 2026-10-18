@@ -32,11 +32,17 @@ typedef struct {
     Np3dExtent entries[32];
 } Np3dRom;
 
+typedef struct {
+    uint32_t offset, length;
+    uint8_t* output;
+} Np3dRead;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 bool np3dRomInit(Np3dRom* rom, const Np3dLaunch* launch, Np3dReadSource read, void* context);
 bool np3dRomRead(Np3dRom* rom, uint32_t offset, void* output, uint32_t length);
+bool np3dRomReadStep(Np3dRom* rom, Np3dRead* request);
 #ifdef __cplusplus
 }
 #endif

@@ -66,8 +66,13 @@ extern tNDSHeader* ndsHeader;
 extern aFile* romFile;
 extern aFile* apFixOverlaysFile;
 
+#ifdef TWLSDK
 extern u32 cacheDescriptor[];
 extern int cacheCounter[];
+#else
+extern u32* cacheDescriptor;
+extern int* cacheCounter;
+#endif
 extern int accessCounter;
 
 extern int romMapLines;
@@ -135,7 +140,7 @@ static inline bool checkArm7(void) {
 static u32 * dmaParams = NULL;
 #ifndef DLDI
 static int currentLen = 0;
-// static int currentSlot = 0;
+static int currentSlot = 0;
 
 static void cardReadDmaNormal(u8* dst, u32 src, u32 len) {
 	// #ifndef DLDI
@@ -168,23 +173,26 @@ static void cardReadDmaNormal(u8* dst, u32 src, u32 len) {
 			slot = allocateCacheSlot();
 
 			buffer = getCacheAddress(slot);
+			DC_InvalidateRange((u32*)buffer, ce9->cacheBlockSize);
+			cacheDescriptor[slot] = UINT32_MAX;
+			cacheCounter[slot] = 0x0FFFFFFF;
+			currentSlot = slot;
 
 			//fileRead((char*)buffer, *romFile, sector, ce9->cacheBlockSize);
 
 			// Write the command
+			const int interrupts = enterCriticalSection();
+			dmaReadOnArm7 = true;
 			sharedAddr[0] = (vu32)buffer;
 			sharedAddr[1] = ((ce9->valueBits & overlaysCached) && src >= ce9->overlaysSrcAlign && src < ce9->overlaysSrcAlign+ce9->overlaysSizeAlign) ? ce9->cacheBlockSize+0x80000000 : ce9->cacheBlockSize;
 			sharedAddr[2] = sector;
 			sharedAddr[3] = commandRead;
 
-			dmaReadOnArm7 = true;
-
 			if (ce9->valueBits & pingIpc) {
 				IPC_SendSync(0x4);
 			}
+			leaveCriticalSection(interrupts);
 
-			updateDescriptor(slot, sector);
-			// currentSlot = slot;
 			return;
 		}
 		#ifdef ASYNCPF
@@ -314,11 +322,16 @@ void continueCardReadDmaArm7() {
 	}
     dmaReadOnArm7 = false;
 
-    vu32* volatile cardStruct = (vu32*)ce9->cardStruct0;
-
+	#ifndef TWLSDK
+	vu32* volatile cardStruct = (vu32*)ce9->cardStruct0;
 	u32 src = ((ce9->valueBits & isSdk5) ? dmaParams[3] : cardStruct[0]);
 	u8* dst = ((ce9->valueBits & isSdk5) ? (u8*)(dmaParams[4]) : (u8*)(cardStruct[1]));
 	u32 len = ((ce9->valueBits & isSdk5) ? dmaParams[5] : cardStruct[2]);
+	#else
+	u32 src = dmaParams[3];
+	u8* dst = (u8*)dmaParams[4];
+	u32 len = dmaParams[5];
+	#endif
 
 	/* if ((ce9->valueBits & cacheDisabled) && (u32)dst >= 0x02000000 && (u32)dst < 0x03000000) {
 		endCardReadDma();
@@ -335,7 +348,8 @@ void continueCardReadDmaArm7() {
 			len2 -= len2 % 32;
 		}*/
 
-		vu8* buffer = getCacheAddress(getSlotForSector(sector));
+		updateDescriptor(currentSlot, sector);
+		vu8* buffer = getCacheAddress(currentSlot);
 
 		currentLen = len2;
 		#ifndef DLDI

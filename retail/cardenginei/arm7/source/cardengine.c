@@ -19,6 +19,7 @@
 #include <string.h>
 #include <nds/ndstypes.h>
 #include <nds/card.h>
+#include "np3d_fat.h"
 #include <nds/fifomessages.h>
 #include <nds/dma.h>
 #include <nds/ipc.h>
@@ -1454,7 +1455,11 @@ static bool start_cardRead_arm9(void) {
 	nocashMessage("fileRead romFile");
 	#endif
 	if ((dst % 4) == 0) {
-		if(!fileReadNonBLocking((char*)dst, useApFixOverlays ? apFixOverlaysFile : romFile, src, len))
+		aFile* file = useApFixOverlays ? apFixOverlaysFile : romFile;
+		bool complete = (romFile->fatTableSettings & fatVirtual)
+			? np3dFileReadNonBlocking((char*)dst, file, src, len)
+			: fileReadNonBLocking((char*)dst, file, src, len);
+		if(!complete)
 		{
 			readOngoing = true;
 			return false;
@@ -1657,9 +1662,13 @@ static inline void sdmmcHandler(void) { // Unused
 #endif
 
 void runCardEngineCheck(void) {
+	const int interrupts = enterCriticalSection();
 	u16 spi = REG_AUXSPICNT;
-	if ((romFile->fatTableSettings & fatVirtual) && ((spi & CARD_SPI_BUSY)
-		|| (spi & (CARD_SPI_ENABLE | CARD_SPI_HOLD)) == (CARD_SPI_ENABLE | CARD_SPI_HOLD))) return;
+	if ((romFile->fatTableSettings & fatVirtual) && (saveMutex || (spi & CARD_SPI_BUSY)
+		|| (spi & (CARD_SPI_ENABLE | CARD_SPI_HOLD)) == (CARD_SPI_ENABLE | CARD_SPI_HOLD))) {
+		leaveCriticalSection(interrupts);
+		return;
+	}
 	// if (!(valueBits & b_runCardEngineCheck)) return;
 
 	//dbg_printf("runCardEngineCheck\n");
@@ -1712,13 +1721,19 @@ void runCardEngineCheck(void) {
     		}*/
         //}
   		// unlockMutex(&cardEgnineCommandMutex);
-  	// }
+	// }
+	leaveCriticalSection(interrupts);
 }
 
 void runCardEngineCheckHalt(void) {
 	u16 spi = REG_AUXSPICNT;
-	if ((romFile->fatTableSettings & fatVirtual) && ((spi & CARD_SPI_BUSY)
+	if ((romFile->fatTableSettings & fatVirtual) && (saveMutex || (spi & CARD_SPI_BUSY)
 		|| (spi & (CARD_SPI_ENABLE | CARD_SPI_HOLD)) == (CARD_SPI_ENABLE | CARD_SPI_HOLD))) return;
+	if ((romFile->fatTableSettings & fatVirtual) && sharedAddr[3] >= (vu32)0x025FFB08
+		&& sharedAddr[3] <= (vu32)0x025FFB0A) {
+		runCardEngineCheck();
+		return;
+	}
 	//dbg_printf("runCardEngineCheckHalt\n");
 	#ifdef DEBUG		
 	nocashMessage("runCardEngineCheckHalt");
