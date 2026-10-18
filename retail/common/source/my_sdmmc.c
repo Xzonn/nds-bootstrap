@@ -474,17 +474,11 @@ static void sdmmc_send_command_nonblocking_ndma(struct mmcdevice *ctx, u32 cmd, 
             // command is ongoing : return
             //nocashMessage("cmd busy");
             break;
-		} 
-        else if (strncmp((const char*)0x04FFFA00, "no$gba", 6) == 0)
-        {
-            // command is finished already without going busy : return
-            // not supposed to happen
-            // needed for no$gba only
-            u16 status0 = sdmmc_read16(REG_SDSTATUS0);
-            //nocashMessage("already finished");
-            if((status0 & flags) == flags)
-            break;
 		}
+        // The transfer can finish before the first busy-status poll.
+        u16 status0 = sdmmc_read16(REG_SDSTATUS0);
+        if ((status0 & flags) == flags)
+            break;
 	}
 	//ctx->stat0 = sdmmc_read16(REG_SDSTATUS0);
 	//ctx->stat1 = sdmmc_read16(REG_SDSTATUS1);
