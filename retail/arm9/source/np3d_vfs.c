@@ -87,7 +87,10 @@ static bool readSource(void* context, uint32_t kind, uint32_t offset, void* outp
             if (cardOffset != (offset & ~511u)) {
                 bool firstCardRead = cardOffset == UINT32_MAX;
                 if (firstCardRead) np3dBootLog("vfs: first physical ROM read begin offset=%08lX\n", (unsigned long)(offset & ~511u));
-                cardRead(offset & ~511u, cardBlock, sizeof(cardBlock));
+                if (isDSiMode()) cardRead(offset & ~511u, cardBlock, sizeof(cardBlock));
+                else cardParamCommand(CARD_CMD_DATA_READ, offset & ~511u,
+                    (rom.launch.cardControl & ~CARD_BLK_SIZE(7)) | CARD_ACTIVATE | CARD_nRESET | CARD_BLK_SIZE(1),
+                    cardBlock, sizeof(cardBlock)/sizeof(uint32_t));
                 if (firstCardRead) np3dBootLog("vfs: first physical ROM read complete\n");
                 cardOffset = offset & ~511u;
             }
@@ -197,6 +200,11 @@ int np3dDeviceInit(void)
     sources[1] = fopen(filename, "rb");
     sources[0] = fopen("sd:/nitro-patcher/runtime/card-prefix.bin", "rb");
     if (!sources[NP3D_MAP_SOURCE] || !sources[1] || !sources[0]) return 5;
+    if (!isDSiMode()) {
+        sysSetCardOwner(BUS_OWNER_ARM9);
+        if (!np3dRomInit(&rom, &launch, readSource, NULL)) return 9;
+        return AddDevice(&device) >= 0 ? 0 : 10;
+    }
     np3dBootLog("vfs: cache sources open; requesting ARM7 card reset\n");
     sysSetCardOwner(BUS_OWNER_ARM7);
     fifoSendValue32(FIFO_USER_08, 1);

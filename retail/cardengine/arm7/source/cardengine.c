@@ -275,7 +275,12 @@ void myIrqHandlerFIFO(void) {
 	nocashMessage("myIrqHandlerFIFO");
 	#endif
 
-    if (IPC_GetSync() == 0x3) {
+    const u32 sync = IPC_GetSync();
+    if (sync == 8) {
+        vu32* request = sharedAddr + 3;
+        *request = 1;
+        while (*request);
+    } else if (sync == 0x3) {
 		swiDelay(100);
 		IPC_SendSync(0x3);
 	}

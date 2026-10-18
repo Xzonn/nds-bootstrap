@@ -1,8 +1,10 @@
-#if NP3D_LAUNCH_TRACE && defined(ARM7) && defined(TWOCARD) && !defined(B4DS)
+#if NP3D_LAUNCH_TRACE && defined(ARM7) && ((defined(TWOCARD) && !defined(B4DS)) || (defined(B4DS) && defined(BUILDFATTABLE)))
 #pragma GCC optimize("Os")
 #include "np3d_trace.h"
 #include "my_fat.h"
+#ifndef B4DS
 #include "my_sdmmc.h"
+#endif
 #include "tonccpy.h"
 #include "hex.h"
 #include "nocashMessage.h"
@@ -43,17 +45,23 @@ static void formatRecord(const char* message, u32 a, u32 b, u32 c)
 
 static void writeRecord(const char* data, u32 offset)
 {
+#ifndef B4DS
     int slot = sdmmc_get_ndma_slot();
     sdmmc_set_ndma_slot(4);
+#endif
     if (fileWrite(data, &traceFile, offset, NP3D_TRACE_RECORD) == NP3D_TRACE_RECORD) {
         resetPrevSect(&traceFile);
         if (fileRead(verified, &traceFile, offset, sizeof(verified)) == sizeof(verified)
             && memcmp(data, verified, sizeof(verified)) == 0) {
+#ifndef B4DS
             sdmmc_set_ndma_slot(slot);
+#endif
             return;
         }
     }
+#ifndef B4DS
     sdmmc_set_ndma_slot(slot);
+#endif
     nocashMessage("NitroPatcher: ARM7 diagnostic write failed");
 #ifdef BUILDFATTABLE
     arm9_stateFlag = ARM9_DISPERR;
@@ -122,7 +130,11 @@ void np3dTraceFailure(u32 cluster, const char* message, u32 a, u32 b, u32 c)
 #ifdef BUILDFATTABLE
 void np3dTraceBegin(u32 cluster)
 {
+#ifdef B4DS
+    getFileFromCluster(&traceFile, cluster);
+#else
     getFileFromCluster(&traceFile, cluster, false);
+#endif
 }
 
 void np3dTraceReady(void)

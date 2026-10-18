@@ -80,7 +80,7 @@ static int dbg_printf(const char* format, ...) { // static int...
 	}
 
 	static FILE* debugFile;
-	debugFile = fopen(bootstrapOnFlashcard ? "fat:/NDSBTSRP.LOG" : "sd:/nitro-patcher/logs/bootstrap.log", "a");
+	debugFile = fopen(bootstrapOnFlashcard ? "fat:/nitro-patcher/logs/bootstrap.log" : "sd:/nitro-patcher/logs/bootstrap.log", "a");
 
 	va_list args;
 	va_start(args, format);
@@ -383,7 +383,7 @@ static int runNdsFile(configuration* conf) {
 	np3dBootLog("bootstrap: ARM7 launch ready\n");
 
 	// Logging
-	const char *logFilePath = (conf->sdFound && !conf->b4dsMode ? "sd:/nitro-patcher/logs/bootstrap.log" : "fat:/NDSBTSRP.LOG");
+	const char *logFilePath = (conf->sdFound && !conf->b4dsMode ? "sd:/nitro-patcher/logs/bootstrap.log" : "fat:/nitro-patcher/logs/bootstrap.log");
 	if (conf->logging) {
 		static FILE* loggingFile = fopen(logFilePath, "w");
 		fprintf(loggingFile, "LOGGING MODE\n");

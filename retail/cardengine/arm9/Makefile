@@ -40,11 +40,13 @@ CFLAGS	:=	-g -Wall -Oz\
 
 # ADD -DDEBUG here for logging/debug
 CFLAGS	+=	$(INCLUDE) -DARM9 -DB4DS -D_NO_SDMMC -DNO_CARDID -DNOGETBOOTCLUSTER -DSKIPCLUSTERFAILSAFE
+CFLAGS += -flto -ffunction-sections -fdata-sections
 CXXFLAGS	:=	$(CFLAGS) -fno-rtti -fno-exceptions
 
 ASFLAGS	:=	-g $(ARCH) -flto $(INCLUDE)
 
 LDFLAGS	=	-nostartfiles -T cardengine.ld -g $(ARCH) -Oz -Wl,-Map,$(notdir $*.map),--use-blx
+LDFLAGS += -flto -Wl,--gc-sections
 
 #---------------------------------------------------------------------------------
 # any extra libraries we wish to link with the project (order is important)

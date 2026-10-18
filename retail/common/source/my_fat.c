@@ -33,7 +33,8 @@
 #include "my_fat.h"
 #include "card.h"
 #include "debug_file.h"
-#if defined(ARM7) && defined(TWOCARD) && !defined(B4DS)
+#include "np3d_rom.h"
+#ifdef NP3D_VIRTUAL_FAT
 #include "np3d_fat.h"
 #include "np3d_rom.h"
 #include "np3d_trace.h"
@@ -253,9 +254,17 @@ unsigned char globalBuffer[2][BYTES_PER_SECTOR];
 #ifdef MORECLUSTERBUFFERS
 unsigned char nextClusterBuffer[nextClusterBufferCount][BYTES_PER_SECTOR];
 #else
+#if defined(B4DS) && defined(ARM9)
+unsigned char* nextClusterBuffer;
+#else
 unsigned char nextClusterBuffer[BYTES_PER_SECTOR];
 #endif
+#endif
+#if defined(B4DS) && defined(ARM9)
+unsigned char* globalBuffer;
+#else
 unsigned char globalBuffer[BYTES_PER_SECTOR];
+#endif
 #endif
 
 #define CLUSTER_CACHE      0x2700000 // Main RAM
@@ -900,7 +909,7 @@ void getFileFromCluster(aFile* file, u32 cluster)
 	#else
 	file->fatTableSettings = 0;
 	#endif
-#if defined(ARM7) && defined(TWOCARD) && !defined(B4DS)
+#ifdef NP3D_VIRTUAL_FAT
 	if (cluster & NP3D_VIRTUAL_CLUSTER) {
 		file->firstCluster = file->currentCluster = cluster & ~NP3D_VIRTUAL_CLUSTER;
 		file->fatTableSettings |= fatVirtual;
@@ -1304,7 +1313,7 @@ fileRead(buffer, cluster, startOffset, length)
 -----------------------------------------------------------------*/
 u32 fileRead (char* buffer, aFile* file, u32 startOffset, u32 length)
 {
-#if defined(ARM7) && defined(TWOCARD) && !defined(B4DS)
+#ifdef NP3D_VIRTUAL_FAT
 	if (file->fatTableSettings & fatVirtual) return np3dFileRead(buffer, file, startOffset, length);
 #endif
 	#ifdef DEBUG
@@ -1793,7 +1802,7 @@ u32 fileWrite (const char* buffer, aFile* file, u32 startOffset, u32 length)
 	return dataPos;
 }
 
-#if defined(ARM7) && defined(TWOCARD) && !defined(B4DS) && defined(BUILDFATTABLE)
+#if defined(BUILDFATTABLE) && defined(NP3D_VIRTUAL_FAT)
 static void reserveVirtualState(aFile* file)
 {
 	if (file->fatTableCache) return;
@@ -1808,14 +1817,19 @@ static void reserveVirtualState(aFile* file)
 	file->fatTableCache = lastClusterCacheUsed;
 	file->fatTableCacheSize = sizeof(Np3dFatState);
 	np3dStoreRuntime(file->fatTableCache);
+#ifdef B4DS
+	file->fatTableSettings |= fatCached;
+#endif
 	lastClusterCacheUsed += sizeof(Np3dFatState) / sizeof(u32);
+#ifndef B4DS
 	currentClusterCacheSize += sizeof(Np3dFatState);
+#endif
 }
 #endif
 
 void buildFatTableCache (aFile * file)
 {
-#if defined(ARM7) && defined(TWOCARD) && !defined(B4DS)
+#ifdef NP3D_VIRTUAL_FAT
 	if (file->fatTableSettings & fatVirtual) {
 #ifdef BUILDFATTABLE
 		reserveVirtualState(file);
@@ -1884,7 +1898,7 @@ void buildFatTableCache (aFile * file)
 #ifdef BUILDFATTABLE
 void buildFatTableCacheCompressed (aFile * file)
 {
-#if defined(ARM7) && defined(TWOCARD) && !defined(B4DS)
+#ifdef NP3D_VIRTUAL_FAT
 	if (file->fatTableSettings & fatVirtual) {
 #ifdef BUILDFATTABLE
 		reserveVirtualState(file);

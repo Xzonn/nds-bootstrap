@@ -1,5 +1,10 @@
-#if defined(ARM7) && defined(TWOCARD) && !defined(B4DS)
+#include "np3d_rom.h"
+#ifdef NP3D_VIRTUAL_FAT
+#ifdef B4DS
+#pragma GCC optimize("Oz")
+#else
 #pragma GCC optimize("Os")
+#endif
 #include "np3d_fat.h"
 #include "np3d_rom.h"
 #include "np3d_trace.h"
@@ -8,20 +13,29 @@
 #include <nds/card.h>
 #include <nds/interrupts.h>
 #include <nds/memory.h>
+#include <nds/ipc.h>
+#include <nds/bios.h>
+#if defined(B4DS) && defined(ARM9)
+extern vu32* volatile sharedAddr;
+#endif
 
 #ifdef BUILDFATTABLE
 static Np3dFatState bootState;
 #endif
 static Np3dFatState* state;
+#if !defined(B4DS) || defined(BUILDFATTABLE)
 static u32 descriptorCluster;
+#endif
+#ifndef B4DS
 static Np3dRead request;
 static aFile* requestFile;
+#endif
 #if NP3D_LAUNCH_TRACE && defined(BUILDFATTABLE)
 extern u32 np3dTraceCluster;
 static u32 tracedSources;
 static u32 readCount;
 #endif
-#if NP3D_LAUNCH_TRACE
+#if NP3D_LAUNCH_TRACE && (!defined(B4DS) || defined(BUILDFATTABLE))
 #ifdef BUILDFATTABLE
 #define TRACE_CLUSTER np3dTraceCluster
 #else
@@ -32,7 +46,7 @@ static u32 readCount;
 static void readFailure(const char* message, u32 a, u32 b, u32 c) __attribute__((noreturn));
 static void readFailure(const char* message, u32 a, u32 b, u32 c)
 {
-#if NP3D_LAUNCH_TRACE
+#if NP3D_LAUNCH_TRACE && (!defined(B4DS) || defined(BUILDFATTABLE))
 #ifdef BUILDFATTABLE
     np3dTraceFailure(np3dTraceCluster, message, a, b, c);
 #else
@@ -44,8 +58,23 @@ static void readFailure(const char* message, u32 a, u32 b, u32 c)
 #endif
 }
 
-static void readCardBlock(u32 offset)
+static void readCardBlock(Np3dFatState* state, u32 offset)
 {
+#if defined(B4DS) && defined(ARM9)
+    vu32* request = sharedAddr + 3;
+    while (1) {
+        *request = 0;
+        IPC_SendSync(8);
+        while (!*request);
+        sysSetCardOwner(BUS_OWNER_ARM9);
+        u16 spi = REG_AUXSPICNT;
+        if (!(spi & CARD_SPI_BUSY)
+            && (spi & (CARD_SPI_ENABLE | CARD_SPI_HOLD)) != (CARD_SPI_ENABLE | CARD_SPI_HOLD)) break;
+        sysSetCardOwner(BUS_OWNER_ARM7);
+        *request = 0;
+        swiDelay(64);
+    }
+#endif
     u32 control = state->rom.launch.cardControl & ~CARD_BLK_SIZE(7);
     vu8* command = (vu8*)0x040001a8;
 #if NP3D_LAUNCH_TRACE
@@ -79,6 +108,11 @@ static void readCardBlock(u32 offset)
         }
     } while (REG_ROMCTRL & CARD_BUSY);
     REG_AUXSPICNT = previous;
+#if defined(ARM9)
+    sysSetCardOwner(BUS_OWNER_ARM7);
+    REG_IPC_SYNC &= ~0x0f00;
+    *request = 0;
+#endif
     if (count != 128) {
         readFailure("ERROR incomplete physical Game Card read", offset, count, REG_ROMCTRL);
     }
@@ -86,7 +120,11 @@ static void readCardBlock(u32 offset)
 
 static bool readSource(void* context, u32 kind, u32 offset, void* output, u32 length)
 {
+#if defined(B4DS) && defined(ARM9)
+    Np3dFatState* state = context;
+#else
     (void)context;
+#endif
 #if NP3D_LAUNCH_TRACE && defined(BUILDFATTABLE)
     bool trace = !(tracedSources & BIT(kind));
     if (trace) {
@@ -120,7 +158,7 @@ static bool readSource(void* context, u32 kind, u32 offset, void* output, u32 le
 #ifdef BUILDFATTABLE
                 if (state->cardOffset == UINT32_MAX) np3dTraceEvent("first physical B7 read begin", offset & ~511u, state->rom.launch.cardControl, REG_EXMEMSTAT);
 #endif
-                readCardBlock(offset & ~511u);
+                readCardBlock(state, offset & ~511u);
 #ifdef BUILDFATTABLE
                 if (state->cardOffset == UINT32_MAX) np3dTraceEvent("first physical B7 read complete", offset & ~511u, REG_ROMCTRL, REG_AUXSPICNT);
 #endif
@@ -140,7 +178,11 @@ static bool readSource(void* context, u32 kind, u32 offset, void* output, u32 le
 
 static void initialize(aFile* file)
 {
+#if defined(B4DS) && defined(ARM9)
+    if (state) return;
+#else
     if (descriptorCluster == file->firstCluster) return;
+#endif
 #ifdef BUILDFATTABLE
     state = &bootState;
     aFile descriptor = *file;
@@ -152,9 +194,15 @@ static void initialize(aFile* file)
     if (received != sizeof(*launch)) readFailure("ERROR descriptor SD read", file->firstCluster, sizeof(*launch), received);
     np3dTraceEvent("descriptor read complete", launch->magic, launch->version, launch->mapSize);
     np3dTraceEvent("descriptor source clusters", launch->mapCluster, launch->dataCluster, launch->prefixCluster);
+#ifdef TWOCARD
     getFileFromCluster(&state->mapFile, launch->mapCluster, false);
     getFileFromCluster(&state->patchFile, launch->dataCluster, false);
     getFileFromCluster(&state->prefixFile, launch->prefixCluster, false);
+#else
+    getFileFromCluster(&state->mapFile, launch->mapCluster);
+    getFileFromCluster(&state->patchFile, launch->dataCluster);
+    getFileFromCluster(&state->prefixFile, launch->prefixCluster);
+#endif
     if (!np3dRomInit(&state->rom, launch, readSource, NULL)) readFailure("ERROR virtual map initialization", launch->magic, launch->version, launch->mapSize);
 #if NP3D_LAUNCH_TRACE
     state->traceCluster = np3dTraceCluster;
@@ -165,10 +213,16 @@ static void initialize(aFile* file)
     if (!state || state->rom.launch.magic != NP3D_LAUNCH_MAGIC || state->rom.launch.version != 1)
         readFailure("ERROR runtime virtual ROM state", (u32)state, file->firstCluster, file->fatTableCacheSize);
     state->rom.read = readSource;
+#if defined(B4DS) && defined(ARM9)
+    state->rom.context = state;
+#else
     state->rom.context = NULL;
 #endif
+#endif
+#if !defined(B4DS) || defined(BUILDFATTABLE)
     state->cardOffset = UINT32_MAX;
     descriptorCluster = file->firstCluster;
+#endif
     return;
 }
 
@@ -191,6 +245,7 @@ u32 np3dFileRead(char* output, aFile* file, u32 offset, u32 length)
     return length;
 }
 
+#ifndef B4DS
 bool np3dFileReadPending(void)
 {
     return request.length != 0;
@@ -237,6 +292,9 @@ bool np3dFileReadNonBlocking(char* output, aFile* file, u32 offset, u32 length)
     return complete;
 }
 
+#endif
+
+#if !defined(B4DS) || defined(BUILDFATTABLE)
 bool np3dOriginalCardCode(aFile* file, u32* code)
 {
     if (!(file->fatTableSettings & fatVirtual)) return false;
@@ -244,6 +302,7 @@ bool np3dOriginalCardCode(aFile* file, u32* code)
     *code = state->rom.launch.cardCode;
     return true;
 }
+#endif
 
 #ifdef BUILDFATTABLE
 void np3dStoreRuntime(void* output)

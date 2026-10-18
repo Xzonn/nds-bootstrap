@@ -1,11 +1,17 @@
-#if defined(NP3D_FRONTEND) || (defined(ARM7) && defined(TWOCARD) && !defined(B4DS)) || !defined(__arm__)
+#include "np3d_rom.h"
+#if defined(NP3D_FRONTEND) || defined(NP3D_VIRTUAL_FAT) || !defined(__arm__)
+#ifdef B4DS
+#pragma GCC optimize("Oz")
+#else
 #pragma GCC optimize("Os")
+#endif
 #include "np3d_rom.h"
 #include <string.h>
 #ifdef __arm__
 #include "tonccpy.h"
 #endif
 
+#if !defined(B4DS) || !defined(ARM9) || defined(NP3D_FRONTEND)
 bool np3dRomInit(Np3dRom* rom, const Np3dLaunch* launch, Np3dReadSource read, void* context)
 {
     uint32_t header[8];
@@ -31,6 +37,7 @@ bool np3dRomInit(Np3dRom* rom, const Np3dLaunch* launch, Np3dReadSource read, vo
     }
     return rom->starts[0] == 0;
 }
+#endif
 
 static const Np3dExtent* extentAt(Np3dRom* rom, uint32_t number)
 {
@@ -103,6 +110,7 @@ bool np3dRomRead(Np3dRom* rom, uint32_t offset, void* output, uint32_t length)
     return true;
 }
 
+#ifndef B4DS
 bool np3dRomReadStep(Np3dRom* rom, Np3dRead* request)
 {
     if (request->offset > rom->launch.romSize || request->length > rom->launch.romSize - request->offset) return false;
@@ -114,4 +122,5 @@ bool np3dRomReadStep(Np3dRom* rom, Np3dRead* request)
     request->length -= take;
     return true;
 }
+#endif
 #endif

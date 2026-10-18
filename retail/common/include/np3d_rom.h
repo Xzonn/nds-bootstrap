@@ -5,6 +5,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#if (defined(B4DS) && (defined(ARM9) || defined(BUILDFATTABLE))) || (defined(ARM7) && defined(TWOCARD) && !defined(B4DS))
+#define NP3D_VIRTUAL_FAT
+#endif
+
 #define NP3D_VIRTUAL_CLUSTER 0x80000000u
 #define NP3D_LAUNCH_MAGIC 0x4c33504eu
 #define NP3D_MAP_SOURCE 3

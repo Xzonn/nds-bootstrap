@@ -529,4 +529,6 @@ DC_WaitWriteBufferEmpty:
 dldiPatchBinary:
 	b 0x02370000
 
+#include "../../arm7/source/biosCalls.s"
+
 card_engine_end:

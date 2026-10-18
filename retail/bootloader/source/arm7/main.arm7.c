@@ -50,6 +50,7 @@
 #include <nds/arm7/i2c.h>
 #include <nds/debug.h>
 #include <nds/ipc.h>
+#include <nds/card.h>
 
 #include <nds/arm9/dldi.h>
 
@@ -59,6 +60,12 @@
 
 #include "tonccpy.h"
 #include "my_fat.h"
+#include "np3d_rom.h"
+#include "np3d_trace.h"
+#if NP3D_LAUNCH_TRACE
+extern u32 np3dTraceCluster;
+extern u8 saveRelocation;
+#endif
 #include "debug_file.h"
 #include "nds_header.h"
 #include "module_params.h"
@@ -941,7 +948,7 @@ static void loadIOverlaysintoRAM(const tDSiHeader* dsiHeader, aFile* file, const
 }
 
 bool dataToPreloadFound(const tNDSHeader* ndsHeader) {
-	if (!expansionPakFound) {
+	if (!expansionPakFound || (romFile.fatTableSettings & fatVirtual)) {
 		return false;
 	}
 
@@ -1183,6 +1190,8 @@ u32 loadCe9Slot2Heap(u32* dst) {
 
 int arm7_main(void) {
 	// nocashMessage("bootloader");
+	np3dTraceBegin(np3dTraceCluster);
+	np3dTraceEvent("B4DS loader entered", REG_EXMEMSTAT, REG_ROMCTRL, arm9_stateFlag);
 
 	initMBK();
 
@@ -1192,6 +1201,7 @@ int arm7_main(void) {
 	// Get ARM7 to clear RAM
 	// nocashMessage("Getting ARM7 to clear RAM...\n");
 	resetMemory_ARM7();
+	np3dTraceEvent("B4DS memory cleared", REG_EXMEMSTAT, REG_ROMCTRL, arm9_stateFlag);
 
 	arm9_macroMode = macroMode;
 
@@ -1201,6 +1211,7 @@ int arm7_main(void) {
 
 	// Init card
 	if (!FAT_InitFiles(initDisc)) {
+		np3dTraceEvent("ERROR B4DS FAT initialization", initDisc, storedFileCluster, 0);
 		// Wait for ARM9
 		while (arm9_stateFlag != ARM9_READY);
 
@@ -1208,6 +1219,8 @@ int arm7_main(void) {
 		errorOutput();
 		//return -1;
 	}
+	np3dTraceReady();
+	np3dTraceEvent("B4DS FAT ready", s2FlashcardId, storedFileCluster, REG_EXMEMSTAT);
 
 	if (logging) {
 		aFile logFile;
@@ -1265,6 +1278,7 @@ int arm7_main(void) {
 	dbg_printf("Loading the NDS file...\n");
 
 	loadBinary_ARM7(&dsiHeaderTemp, &romFile);
+	np3dTraceEvent("B4DS game binaries loaded", dsiHeaderTemp.ndshdr.arm9binarySize, dsiHeaderTemp.ndshdr.arm7binarySize, romFile.fatTableSettings);
 	if (dsiHeaderTemp.ndshdr.arm9binarySize == 0) {
 		dbg_printf("ARM9 binary is empty!");
 		errorOutput();
@@ -1299,6 +1313,7 @@ int arm7_main(void) {
 	const bool laterSdk = ((moduleParams->sdk_version >= 0x2008000 && moduleParams->sdk_version != 0x2012774) || moduleParams->sdk_version == 0x20029A8);
 
 	ndsHeader = loadHeader(&dsiHeaderTemp, moduleParams);
+	np3dTraceEvent("B4DS header and SDK loaded", moduleParams->sdk_version, (u32)ndsHeader->arm9destination, (u32)ndsHeader->arm7destination);
 	const char* romTid = getRomTid(ndsHeader);
 
 	if (!(accessControl & BIT(4)) && srlAddr == 0 && memcmp(romTid, "UBR", 3) != 0 && memcmp(romTid, "HND", 3) != 0 && memcmp(romTid, "HNE", 3) != 0 && srlAddr == 0 && (softResetParams[0] == 0 || softResetParams[0] == 0xFFFFFFFF)) {
@@ -1425,13 +1440,14 @@ int arm7_main(void) {
 	bool wramUsed = false;
 	u32 fatTableSize = 0;
 	u32 fatTableSizeNoExp = !laterSdk ? 0x19C00 : 0x1A400;
-	if (s2FlashcardId == 0x334D || s2FlashcardId == 0x3647 || s2FlashcardId == 0x4353) {
+	const bool virtualRom = (romFile.fatTableSettings & fatVirtual);
+	if (!virtualRom && (s2FlashcardId == 0x334D || s2FlashcardId == 0x3647 || s2FlashcardId == 0x4353)) {
 		fatTableAddr = (s2FlashcardId==0x4353 ? 0x09F7FE00 : 0x09F80000);
 		fatTableSize = 0x80000;
-	} else if (s2FlashcardId == 0x5A45 && !dsBrowser) {
+	} else if (!virtualRom && s2FlashcardId == 0x5A45 && !dsBrowser) {
 		fatTableAddr = 0x08F80000;
 		fatTableSize = 0x80000;
-	} else if (expansionPakFound && !dsBrowser) {
+	} else if (!virtualRom && expansionPakFound && !dsBrowser) {
 		fatTableAddr = 0x09780000;
 		fatTableSize = 0x80000;
 	} else if (extendedMemory) {
@@ -1617,7 +1633,10 @@ int arm7_main(void) {
 		}
 	}
 
-	ROMinRAM = isROMLoadableInRAM(&dsiHeaderTemp, &dsiHeaderTemp.ndshdr, romTid, moduleParams, usesCloneboot); // If possible, set to load ROM into RAM
+	ROMinRAM = (romFile.fatTableSettings & fatVirtual) ? 0
+		: isROMLoadableInRAM(&dsiHeaderTemp, &dsiHeaderTemp.ndshdr, romTid, moduleParams, usesCloneboot);
+	np3dTraceEvent("B4DS runtime state reserved", (u32)romFile.fatTableCache, romFile.fatTableCacheSize, fatTableAddr);
+	np3dTraceEvent("B4DS patching engines", ce9Location, saveRelocation, useApPatch);
 	errorCode = patchCardNds(
 		(cardengineArm7*)CARDENGINE_ARM7_LOCATION,
 		(cardengineArm9*)ce9Location,
@@ -1632,6 +1651,7 @@ int arm7_main(void) {
 	if (errorCode == ERR_NONE) {
 		dbg_printf("Card patch successful\n\n");
 	} else {
+		np3dTraceEvent("ERROR B4DS card patch", errorCode, 0, 0);
 		dbg_printf("Card patch failed");
 		errorOutput();
 	}
@@ -1666,6 +1686,7 @@ int arm7_main(void) {
 		ce9DldiItcm = 0x01FFC000; // Set <= 16KB DLDI location at ITCM
 	}
 	if (!dldiPatchBinary((data_t*)ce9Location, 0x3800, (data_t*)ce9DldiOffset, (data_t*)ce9DldiItcm)) {
+		np3dTraceEvent("ERROR B4DS DLDI patch", ce9Location, ce9DldiOffset, ce9DldiItcm);
 		dbg_printf("ce9 DLDI patch failed\n");
 		errorOutput();
 	}
@@ -1688,6 +1709,7 @@ int arm7_main(void) {
 	if (errorCode == ERR_NONE) {
 		// dbg_printf("Card hook 7 successful\n\n");
 	} else {
+		np3dTraceEvent("ERROR B4DS ARM7 hook", errorCode, 0, 0);
 		// dbg_printf("Card hook 7 failed");
 		errorOutput();
 	}
@@ -1698,16 +1720,18 @@ int arm7_main(void) {
 			loadIOverlaysintoRAM(&dsiHeaderTemp, &romFile, usesCloneboot);
 		}
 	} else {
+		np3dTraceEvent("B4DS overlay loading begin", overlayPatch, dataToPreloadSize, 0);
 		loadOverlaysintoFile(ndsHeader, moduleParams, &romFile);
 		loadROMPartintoRAM(ndsHeader, &romFile);
 	}
+	np3dTraceEvent("B4DS overlay loading complete", 0, 0, 0);
 
 	errorCode = hookNdsRetailArm9(
 		(cardengineArm9*)ce9Location,
 		ce9DldiOffset,
 		ndsHeader,
 		moduleParams,
-		romFile.firstCluster,
+		romFile.firstCluster | ((romFile.fatTableSettings & fatVirtual) ? NP3D_VIRTUAL_CLUSTER : 0),
 		savFile.firstCluster,
 		saveSize,
 		(u32)romFile.fatTableCache,
@@ -1740,12 +1764,11 @@ int arm7_main(void) {
 		fatTableSize,
 		fatTableAddr
 	);
-	/* if (errorCode == ERR_NONE) {
-		dbg_printf("Card hook 9 successful\n\n");
-	} else {
-		dbg_printf("Card hook 9 failed");
+	if (errorCode != ERR_NONE) {
+		np3dTraceEvent("ERROR B4DS ARM9 hook", errorCode, ce9Location, 0);
 		errorOutput();
-	} */
+	}
+	np3dTraceEvent("B4DS ARM9 hook complete", errorCode, ce9Location, 0);
 
 	patchOffsetCacheFileNewCrc = swiCRC16(0xFFFF, &patchOffsetCache, sizeof(patchOffsetCacheContents));
 	if (patchOffsetCacheFileNewCrc != patchOffsetCacheFilePrevCrc) {
@@ -1754,8 +1777,10 @@ int arm7_main(void) {
 
 	if (useApPatch) {
 		if (applyIpsPatch(ndsHeader, (u8*)IPS_LOCATION, (*(u8*)(IPS_LOCATION+apPatchSize-1) == 0xA9), ROMinRAM, usesCloneboot)) {
+			np3dTraceEvent("B4DS AP patch applied", apPatchSize, apPatchOffset, 0);
 			dbg_printf("AP-fix applied\n");
 		} else {
+			np3dTraceEvent("ERROR B4DS AP patch", apPatchSize, apPatchOffset, 0);
 			dbg_printf("Failed to apply AP-fix\n");
 		}
 		toncset((u32*)IPS_LOCATION, 0, apPatchSize);	// Clear IPS patch
@@ -1813,6 +1838,7 @@ int arm7_main(void) {
 	extern u32 iUncompressedSize;
 	aFile pageFile;
 	getFileFromCluster(&pageFile, pageFileCluster);
+	np3dTraceEvent("B4DS page file write begin", pageFileCluster, iUncompressedSize, newArm7binarySize);
 
 	if (!(accessControl & BIT(4))) {
 		// If not a DSiWare title, write patches ARM binaries to page file for use with soft-resets
@@ -1822,6 +1848,7 @@ int arm7_main(void) {
 	}
 	fileWrite((char*)&iUncompressedSize, &pageFile, 0x3FFFF0, sizeof(u32));
 	fileWrite((char*)&newArm7binarySize, &pageFile, 0x3FFFF4, sizeof(u32));
+	np3dTraceEvent("B4DS page file write complete", 0, 0, 0);
 
 	clearScreen();
 
@@ -1830,6 +1857,7 @@ int arm7_main(void) {
 
 	// dbg_printf("Starting the NDS file...");
     setMemoryAddress(ndsHeader, moduleParams, romFile);
+	np3dTraceEvent("B4DS game boot ready", (u32)ndsHeader->arm9executeAddress, (u32)ndsHeader->arm7executeAddress, saveRelocation);
 
 	if (0 == (REG_KEYINPUT & (KEY_L | KEY_R | KEY_DOWN | KEY_A))) {		// Dump RAM
 		aFile ramDumpFile;

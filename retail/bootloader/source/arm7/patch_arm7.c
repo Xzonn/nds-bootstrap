@@ -10,12 +10,14 @@
 #include "tonccpy.h"
 #include "cardengine_header_arm7.h"
 #include "debug_file.h"
+#include "np3d_fat.h"
 #include <nds/card.h>
 
 #define FEATURE_SLOT_GBA			0x00000010
 #define FEATURE_SLOT_NDS			0x00000020
 
 extern u32 _io_dldi_features;
+extern u32 storedFileCluster;
 
 extern u8 saveRelocation;
 extern u16 a9ScfgRom;
@@ -599,7 +601,12 @@ u32 patchCardNdsArm7(
 		// GameCodeMatch: Compare gamecodes between DS Cartridge and Rom on SD
 		// This file can active save located into DS Cartridge for B4DS mode in slot2 flashcart.
 		bool GameCodeMatch = false;
-		if (_io_dldi_features & FEATURE_SLOT_GBA) {
+		aFile virtualRom;
+		getFileFromCluster(&virtualRom, storedFileCluster);
+		u32 originalCode;
+		if (np3dOriginalCardCode(&virtualRom, &originalCode)) {
+			GameCodeMatch = memcmp(&originalCode, ndsHeader->gameCode, 4) == 0;
+		} else if (_io_dldi_features & FEATURE_SLOT_GBA) {
 			char headerData[0x200] = {0};
 			cardParamCommand (CARD_CMD_HEADER_READ, 0, 
 				CARD_ACTIVATE | CARD_nRESET | CARD_CLK_SLOW | CARD_BLK_SIZE(1) | CARD_DELAY1(0x1FFF) | CARD_DELAY2(0x3F), 

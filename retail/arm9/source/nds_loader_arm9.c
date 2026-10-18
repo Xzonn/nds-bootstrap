@@ -341,13 +341,11 @@ int runNds(u32 cluster, u32 saveCluster, u32 donorTwlCluster, /* u32 gbaCluster,
 	loader->cacheBlockSize              = conf->cacheBlockSize;
 	tonccpy(loader->bannerSavPath, conf->bannerSavPath, strlen(conf->bannerSavPath));
 	tonccpy(loader->version, VER_NUMBER, sizeof(VER_NUMBER));
-	if (dsiFeatures() && !conf->b4dsMode) {
-		loader->np3dTraceCluster = 0;
+	loader->np3dTraceCluster = 0;
 #if NP3D_LAUNCH_TRACE
-		loader->np3dTraceCluster = np3dPrepareLoaderLog();
-		np3dBootLog("bootstrap: ARM7 diagnostic file ready cluster=%08lX\n", (unsigned long)loader->np3dTraceCluster);
+	loader->np3dTraceCluster = np3dPrepareLoaderLog();
+	np3dBootLog("bootstrap: ARM7 diagnostic file ready cluster=%08lX\n", (unsigned long)loader->np3dTraceCluster);
 #endif
-	}
 
 	np3dBootLog("bootstrap: retail loader prepared; beginning ARM7 handoff\n");
 	nocashMessage("irqDisable(IRQ_ALL);");

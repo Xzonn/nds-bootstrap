@@ -67,6 +67,7 @@ extern u32 dldiOffsetNew;
 #include "tonccpy.h"
 #include "card.h"
 #include "my_fat.h"
+#include "np3d_fat.h"
 
 extern cardengineArm9* volatile ce9;
 struct IgmText *igmText = (struct IgmText *)INGAME_MENU_LOCATION_B4DS;
@@ -683,6 +684,10 @@ static void initialize(void) {
 		toncset((u32*)ce9->dldiOffset, 0, dldiFileSize);
 	}
 
+	extern unsigned char* nextClusterBuffer;
+	extern unsigned char* globalBuffer;
+	nextClusterBuffer=(unsigned char*)((Np3dFatState*)ce9->romFatTableCache)->fatBuffer;
+	globalBuffer=(unsigned char*)((Np3dFatState*)ce9->romFatTableCache)->sectorBuffer;
 	if (!FAT_InitFiles(true)) {
 		//nocashMessage("!FAT_InitFiles");
 		while (1);
@@ -700,6 +705,7 @@ static void initialize(void) {
 	if (ce9->romFatTableCache != 0) {
 		romFile.fatTableCache = (u32*)ce9->romFatTableCache;
 		romFile.fatTableSettings |= fatCached;
+		if (romFile.fatTableSettings & fatVirtual) romFile.fatTableSettings &= ~fatCached;
 		if (ce9->romFatTableCompressed) {
 			romFile.fatTableSettings |= fatCompressed;
 		}

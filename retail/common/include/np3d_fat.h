@@ -9,6 +9,10 @@ typedef struct {
     aFile mapFile, patchFile, prefixFile;
     u32 cardBuffer[128];
     u32 cardOffset;
+#ifdef B4DS
+    u32 fatBuffer[128];
+    u32 sectorBuffer[128];
+#endif
 #if NP3D_LAUNCH_TRACE
     u32 traceCluster;
 #endif

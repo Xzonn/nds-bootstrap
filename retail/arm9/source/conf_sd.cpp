@@ -1,6 +1,7 @@
 #include <stdlib.h> // strtol
 #include <errno.h>
 #include <unistd.h>
+#include <sys/iosupport.h>
 //#include <stdio.h>
 #include <nds.h>
 #include <nds/arm9/dldi.h>
@@ -222,7 +223,7 @@ static void createRamDumpBin(configuration* conf) {
 		ramDumpSize = 0x02000000;
 	}
 	else {
-		ramDumpPath = "fat:/_nds/nds-bootstrap/ramDump.bin";
+		ramDumpPath = "fat:/nitro-patcher/runtime/bootstrap/ramDump.bin";
 		ramDumpSize = 0x800000;
 	}
 
@@ -258,7 +259,7 @@ static void createApFixOverlayBin(configuration* conf) {
 		apFixOverlaysPath.append("/nitro-patcher/runtime/bootstrap/apFixOverlays.bin");
 	}
 	else {
-		apFixOverlaysPath = "fat:/_nds/nds-bootstrap/apfixOverlays.bin";
+		apFixOverlaysPath = "fat:/nitro-patcher/runtime/bootstrap/apfixOverlays.bin";
 	}
 
 	if (!conf->isDSiWare && getFileSize(apFixOverlaysPath.c_str()) < 0xA00000) {
@@ -725,8 +726,15 @@ void getIgmStrings(configuration* conf, bool b4ds) {
 
 int loadFromSD(configuration* conf, const char *bootstrapPath) {
 	int rc = 0;
-	fatMountSimple("sd", &__my_io_dsisd);
-	fatMountSimple("fat", dldiGetInternal());
+	if (dsiFeatures()) {
+		fatMountSimple("sd", &__my_io_dsisd);
+		fatMountSimple("fat", dldiGetInternal());
+	} else if (fatMountSimple("fat", dldiGetInternal())) {
+		static devoptab_t sdAlias;
+		sdAlias = *GetDeviceOpTab("fat:");
+		sdAlias.name = "sd";
+		if (AddDevice(&sdAlias) < 0) return -1;
+	}
 
 	conf->sdFound = (access("sd:/", F_OK) == 0);
 	const bool flashcardFound = (access("fat:/", F_OK) == 0);
@@ -853,7 +861,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 		dldiWrite->driverSize = 0x0D;
 	}
 
-	conf->bootstrapOnFlashcard = ((bootstrapPath[0] == 'f' && bootstrapPath[1] == 'a' && bootstrapPath[2] == 't') || !conf->sdFound);
+	conf->bootstrapOnFlashcard = !dsiFeatures() || ((bootstrapPath[0] == 'f' && bootstrapPath[1] == 'a' && bootstrapPath[2] == 't') || !conf->sdFound);
 
 	load_conf(conf, "sd:/nitro-patcher/config/nds-bootstrap.ini");
 	np3dBootLog("bootstrap: configuration loaded path=%s saveRelocation=%d dsiMode=%d console=%d\n",
@@ -861,7 +869,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 
 	conf->initDisc = (REG_SCFG_EXT == 0);
 
-	conf->gameOnFlashcard = (conf->ndsPath[0] == 'f' && conf->ndsPath[1] == 'a' && conf->ndsPath[2] == 't');
+	conf->gameOnFlashcard = !dsiFeatures() || (conf->ndsPath[0] == 'f' && conf->ndsPath[1] == 'a' && conf->ndsPath[2] == 't');
 	conf->saveOnFlashcard = (conf->savPath[0] == 'f' && conf->savPath[1] == 'a' && conf->savPath[2] == 't');
 
 	if (conf->quitPath[0] == 'f' && conf->quitPath[1] == 'a' && conf->quitPath[2] == 't') {
@@ -936,14 +944,14 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 		mkdir("sd:/nitro-patcher/runtime/bootstrap/patchOffsetCache", 0777);
 	}
 	if (flashcardFound) {
-		mkdir("fat:/_nds", 0777);
-		mkdir("fat:/_nds/nds-bootstrap", 0777);
-		mkdir("fat:/_nds/nds-bootstrap/patchOffsetCache", 0777);
+		mkdir("fat:/nitro-patcher", 0777);
+		mkdir("fat:/nitro-patcher/runtime", 0777);
+		mkdir("fat:/nitro-patcher/runtime/bootstrap", 0777);
 	}
 
 	pageFilePath = "sd:/nitro-patcher/runtime/bootstrap/pagefile.sys";
 	if (conf->b4dsMode || conf->bootstrapOnFlashcard) {
-		pageFilePath = "fat:/_nds/pagefile.sys";	
+		pageFilePath = "fat:/nitro-patcher/runtime/bootstrap/pagefile.sys";
 	}
 
 	conf->romSize = getFileSize(conf->ndsPath);
@@ -1833,7 +1841,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 
 			screenshotPath = "sd:/nitro-patcher/runtime/bootstrap/screenshots.tar";
 			if (conf->bootstrapOnFlashcard) {
-				screenshotPath = "fat:/_nds/nds-bootstrap/screenshots.tar";
+				screenshotPath = "fat:/nitro-patcher/runtime/bootstrap/screenshots.tar";
 			}
 
 			if (getFileSize(screenshotPath.c_str()) < 0x4BCC00) {
@@ -1958,8 +1966,8 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 		}
 
 		if (conf->gameOnFlashcard) {
-			wideCheatFilePath = "fat:/_nds/nds-bootstrap/wideCheatData.bin";
-			cheatFilePath = "fat:/_nds/nds-bootstrap/cheatData.bin";
+			wideCheatFilePath = "fat:/nitro-patcher/runtime/bootstrap/wideCheatData.bin";
+			cheatFilePath = "fat:/nitro-patcher/runtime/bootstrap/cheatData.bin";
 		} else {
 			wideCheatFilePath = "sd:/nitro-patcher/runtime/bootstrap/wideCheatData.bin";
 			cheatFilePath = "sd:/nitro-patcher/runtime/bootstrap/cheatData.bin";
@@ -2160,9 +2168,17 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 		}
 
 		cebin = fopen(pageFilePath.c_str(), found ? "r+" : "wb");
-		fseek(cebin, ntrPageFileSize - 1, SEEK_SET);
-		fputc('\0', cebin);
-		fclose(cebin);
+		bool pageFileWritten = false;
+		if (cebin) {
+			pageFileWritten = (fseek(cebin, ntrPageFileSize - 1, SEEK_SET) == 0 && fputc('\0', cebin) != EOF);
+			if (fclose(cebin) != 0) pageFileWritten = false;
+		}
+		if (!pageFileWritten || getFileSize(pageFilePath.c_str()) < ntrPageFileSize) {
+			myConsoleDemoInit();
+			iprintf("Cannot write pagefile.sys.\n");
+			np3dBootLog("ERROR: cannot write pagefile.sys\n");
+			return -1;
+		}
 
 		if (!found) {
 			consoleClear();
@@ -2197,7 +2213,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 
 			getIgmStrings(conf, true);
 
-			screenshotPath = "fat:/_nds/nds-bootstrap/screenshots.tar";
+			screenshotPath = "fat:/nitro-patcher/runtime/bootstrap/screenshots.tar";
 
 			if (getFileSize(screenshotPath.c_str()) < 0x4BCC00) {
 				char buffer[2][0x100] = {{0}};
@@ -2505,7 +2521,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 		}
 		fclose(cebin);
 
-		cheatFilePath = "fat:/_nds/nds-bootstrap/cheatData.bin";
+		cheatFilePath = "fat:/nitro-patcher/runtime/bootstrap/cheatData.bin";
 
 		conf->saveSize = getFileSize(conf->savPath);
 		// conf->apPatchSize = getFileSize(conf->apPatchPath);
@@ -2648,7 +2664,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 
 	srParamsFilePath = "sd:/nitro-patcher/runtime/bootstrap/softResetParams.bin";
 	if (conf->gameOnFlashcard) {
-		srParamsFilePath = "fat:/_nds/nds-bootstrap/softResetParams.bin";
+		srParamsFilePath = "fat:/nitro-patcher/runtime/bootstrap/softResetParams.bin";
 	}
 	
 	if (getFileSize(srParamsFilePath.c_str()) < 0x50) {
@@ -2879,8 +2895,23 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 		char buffer[0x200] = {0};
 
 		FILE* patchOffsetCacheFile = fopen(patchOffsetCacheFilePath, "wb");
-		fwrite(buffer, 1, sizeof(buffer), patchOffsetCacheFile);
-		fclose(patchOffsetCacheFile);
+		bool written = false;
+		if (patchOffsetCacheFile) {
+			written = (fwrite(buffer, 1, sizeof(buffer), patchOffsetCacheFile) == sizeof(buffer));
+			if (fclose(patchOffsetCacheFile) != 0) written = false;
+		}
+		if (!written) {
+			myConsoleDemoInit();
+			iprintf("Cannot write patch-offsets.bin.\n");
+			np3dBootLog("ERROR: cannot write patch-offsets.bin\n");
+			return -1;
+		}
+	}
+	if (getFileSize(patchOffsetCacheFilePath) != 0x200) {
+		myConsoleDemoInit();
+		iprintf("Cannot read patch-offsets.bin.\n");
+		np3dBootLog("ERROR: invalid patch-offsets.bin size\n");
+		return -1;
 	}
 
 	// Create RAM dump binary

@@ -4,7 +4,7 @@
 #define NP3D_TRACE_BYTES 0x10000
 #define NP3D_TRACE_RECORD 128
 
-#if NP3D_LAUNCH_TRACE && defined(ARM7) && defined(TWOCARD) && !defined(B4DS)
+#if NP3D_LAUNCH_TRACE && defined(ARM7) && ((defined(TWOCARD) && !defined(B4DS)) || (defined(B4DS) && defined(BUILDFATTABLE)))
 #include <nds/ndstypes.h>
 
 void np3dTraceEvent(const char* message, u32 a, u32 b, u32 c);
