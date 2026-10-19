@@ -214,6 +214,30 @@ static int loadCardEngineBinary(const char* cardenginePath, u8* location) {
 	return 0;
 }
 
+static void runtimeWriteFailed(const char* path) {
+	myConsoleDemoInit();
+	iprintf("Cannot write %s\n", path);
+	while (1) swiWaitForVBlank();
+}
+
+static void closeRuntimeFile(FILE* file, const char* path) {
+	bool success = !ferror(file);
+	if (fclose(file) != 0) success = false;
+	if (!success) runtimeWriteFailed(path);
+}
+
+static void allocateRuntimeFile(const char* path, long size) {
+	if (getFileSize(path) >= size) return;
+	FILE* file = fopen(path, access(path, F_OK) == 0 ? "r+" : "wb");
+	if (!file) runtimeWriteFailed(path);
+	if (fseek(file, size - 1, SEEK_SET) != 0 || fputc('\0', file) == EOF) {
+		fclose(file);
+		runtimeWriteFailed(path);
+	}
+	closeRuntimeFile(file, path);
+	if (getFileSize(path) < size) runtimeWriteFailed(path);
+}
+
 static void createRamDumpBin(configuration* conf) {
 	int ramDumpSize;
 	if (dsiFeatures() && !conf->b4dsMode)
@@ -237,12 +261,7 @@ static void createRamDumpBin(configuration* conf) {
 			remove(ramDumpPath.c_str());
 		}
 
-		FILE *ramDumpFile = fopen(ramDumpPath.c_str(), "wb");
-		if (ramDumpFile) {
-			fseek(ramDumpFile, ramDumpSize - 1, SEEK_SET);
-			fputc('\0', ramDumpFile);
-			fclose(ramDumpFile);
-		}
+		allocateRuntimeFile(ramDumpPath.c_str(), ramDumpSize);
 
 		consoleClear();
 		if (getFileSize(ramDumpPath.c_str()) < ramDumpSize) {
@@ -272,12 +291,7 @@ static void createApFixOverlayBin(configuration* conf) {
 			remove(apFixOverlaysPath.c_str());
 		}
 
-		FILE *apFixOverlaysFile = fopen(apFixOverlaysPath.c_str(), "wb");
-		if (apFixOverlaysFile) {
-			fseek(apFixOverlaysFile, 0xA00000 - 1, SEEK_SET);
-			fputc('\0', apFixOverlaysFile);
-			fclose(apFixOverlaysFile);
-		}
+		allocateRuntimeFile(apFixOverlaysPath.c_str(), 0xA00000);
 
 		consoleClear();
 		if (getFileSize(apFixOverlaysPath.c_str()) < 0xA00000) {
@@ -1694,10 +1708,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 				iprintf("Please wait...\n");
 			}
 
-			cebin = fopen(pageFilePath.c_str(), found ? "r+" : "wb");
-			fseek(cebin, twlPageFileSize - 1, SEEK_SET);
-			fputc('\0', cebin);
-			fclose(cebin);
+			allocateRuntimeFile(pageFilePath.c_str(), twlPageFileSize);
 
 			if (!found) {
 				consoleClear();
@@ -1769,10 +1780,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 				iprintf("Please wait...\n");
 			}
 
-			cebin = fopen(pageFilePath.c_str(), found ? "r+" : "wb");
-			fseek(cebin, twlPageFileSize - 1, SEEK_SET);
-			fputc('\0', cebin);
-			fclose(cebin);
+			allocateRuntimeFile(pageFilePath.c_str(), twlPageFileSize);
 
 			if (!found) {
 				consoleClear();
@@ -1870,7 +1878,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 							fwrite(buffer[0], 1, 0x100, screenshotFile);
 						}
 
-						fclose(screenshotFile);
+						closeRuntimeFile(screenshotFile, screenshotPath.c_str());
 					}
 					fclose(headerFile);
 				}
@@ -1900,6 +1908,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 			}
 
 			cebin = fopen(pageFilePath.c_str(), "r+");
+			if (!cebin) runtimeWriteFailed(pageFilePath.c_str());
 			if (colorTable) {
 				u16* igmPals = (u16*)igmText;
 				igmPals += IGM_PALS/2;
@@ -1908,7 +1917,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 				}
 			}
 			fwrite((u8*)igmText, 1, 0xA000, cebin);
-			fclose(cebin);
+			closeRuntimeFile(cebin, pageFilePath.c_str());
 			toncset((u8*)igmText, 0, 0xA000);
 		}
 
@@ -2167,18 +2176,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 			iprintf("Please wait...\n");
 		}
 
-		cebin = fopen(pageFilePath.c_str(), found ? "r+" : "wb");
-		bool pageFileWritten = false;
-		if (cebin) {
-			pageFileWritten = (fseek(cebin, ntrPageFileSize - 1, SEEK_SET) == 0 && fputc('\0', cebin) != EOF);
-			if (fclose(cebin) != 0) pageFileWritten = false;
-		}
-		if (!pageFileWritten || getFileSize(pageFilePath.c_str()) < ntrPageFileSize) {
-			myConsoleDemoInit();
-			iprintf("Cannot write pagefile.sys.\n");
-			np3dBootLog("ERROR: cannot write pagefile.sys\n");
-			return -1;
-		}
+		allocateRuntimeFile(pageFilePath.c_str(), ntrPageFileSize);
 
 		if (!found) {
 			consoleClear();
@@ -2241,7 +2239,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 							fwrite(buffer[0], 1, 0x100, screenshotFile);
 						}
 
-						fclose(screenshotFile);
+						closeRuntimeFile(screenshotFile, screenshotPath.c_str());
 					}
 					fclose(headerFile);
 				}
@@ -2271,8 +2269,9 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 			}
 
 			cebin = fopen(pageFilePath.c_str(), "r+");
+			if (!cebin) runtimeWriteFailed(pageFilePath.c_str());
 			fwrite((u8*)igmText, 1, 0xA000, cebin);
-			fclose(cebin);
+			closeRuntimeFile(cebin, pageFilePath.c_str());
 			toncset((u8*)igmText, 0, 0xA000);
 		}
 
@@ -2671,10 +2670,11 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 		const u32 buffer = 0xFFFFFFFF;
 
 		FILE* srParamsFile = fopen(srParamsFilePath.c_str(), "wb");
+		if (!srParamsFile) runtimeWriteFailed(srParamsFilePath.c_str());
 		fwrite(&buffer, sizeof(u32), 1, srParamsFile);
 		fseek(srParamsFile, 0x50 - 1, SEEK_SET);
 		fputc('\0', srParamsFile);
-		fclose(srParamsFile);
+		closeRuntimeFile(srParamsFile, srParamsFilePath.c_str());
 	}
 
 	conf->donorFileOffset = 0;
