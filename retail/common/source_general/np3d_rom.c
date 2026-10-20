@@ -23,7 +23,7 @@ bool np3dRomInit(Np3dRom* rom, const Np3dLaunch* launch, Np3dReadSource read, vo
     rom->last = 0;
     if (!read(context, NP3D_MAP_SOURCE, 0, header, sizeof(header))) return false;
     rom->count = header[4];
-    if (!(header[0] == 0x4433504e && header[1] == 0x0050414d && header[2] == 1 && header[3] == 1
+    if (!(header[0] == 0x4433504e && header[1] == 0x0050414d && header[2] == 1 && header[3] == 2
         && header[5] == launch->romSize && header[6] == sizeof(Np3dExtent) && rom->count
         && rom->count <= (UINT32_MAX - 32) / sizeof(Np3dExtent)
         && 32 + rom->count * sizeof(Np3dExtent) == launch->mapSize)) return false;
