@@ -331,6 +331,7 @@ void loadAsyncLoadSettings(configuration* conf, const char* romTid, const u16 he
 }
 
 void loadApFix(configuration* conf, const char* bootstrapPath, const char* romTid, const u16 headerCRC) {
+	if (!conf->apPatch) return;
 	{
 		std::string romFilename = conf->ndsPath;
 		const size_t last_slash_idx = romFilename.find_last_of("/");

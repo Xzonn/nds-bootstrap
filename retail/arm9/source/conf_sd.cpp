@@ -415,6 +415,7 @@ static void load_conf(configuration* conf, const char* fn) {
 
 	// AP-patch path
 	// conf->apPatchPath = strdup(config_file.fetch("NDS-BOOTSTRAP", "AP_FIX_PATH").c_str());
+	conf->apPatch = (bool)strtol(config_file.fetch("NDS-BOOTSTRAP", "AP_PATCH", "1").c_str(), NULL, 0);
 
 	// Language
 	conf->language = strtol(config_file.fetch("NDS-BOOTSTRAP", "LANGUAGE", "-1").c_str(), NULL, 0);
