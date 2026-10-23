@@ -550,6 +550,7 @@ static void load_conf(configuration* conf, const char* fn) {
 			break;
 		default:
 #ifdef DEFAULT_CPU_BOOST
+			conf->boostCpu = true;
 			// TODO: If the list gets large enough, switch to bsearch().
 			for (unsigned int i = 0; i < sizeof(twlClockExcludeList)/sizeof(twlClockExcludeList[0]); i++) {
 				if (memcmp(gameTid, twlClockExcludeList[i], 3) == 0) {
@@ -559,7 +560,6 @@ static void load_conf(configuration* conf, const char* fn) {
 					break;
 				}
 			}
-			conf->boostCpu = true;
 #else
 			conf->boostCpu = false;
 #endif
@@ -2890,7 +2890,8 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 		fclose(ndsFile);
 	}
 
-	snprintf(patchOffsetCacheFilePath, sizeof(patchOffsetCacheFilePath), "%s/patch-offsets.bin", np3dLaunchInfo()->cachePath);
+	snprintf(patchOffsetCacheFilePath, sizeof(patchOffsetCacheFilePath), "%s/patch-offsets%s.bin", np3dLaunchInfo()->cachePath,
+		(conf->dsiMode && unitCode == 2) ? "-twl" : "");
 
 	if (access(patchOffsetCacheFilePath, F_OK) != 0) {
 		char buffer[0x200] = {0};

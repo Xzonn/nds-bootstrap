@@ -151,6 +151,15 @@ static bool readSource(void* context, u32 kind, u32 offset, void* output, u32 le
             u32 received = fileRead((char*)destination, &state->prefixFile, offset, take);
             np3dTraceCheckSd(TRACE_CLUSTER);
             if (received != take) readFailure("ERROR SD card prefix read", offset, take, received);
+#ifndef B4DS
+        } else if (state->rom.launch.twlSize && offset >= state->rom.launch.twlStart
+            && offset - state->rom.launch.twlStart < state->rom.launch.twlSize) {
+            take = state->rom.launch.twlSize - (offset - state->rom.launch.twlStart);
+            if (take > length) take = length;
+            u32 received = fileRead((char*)destination, &state->prefixFile, 0x8000 + offset - state->rom.launch.twlStart, take);
+            np3dTraceCheckSd(TRACE_CLUSTER);
+            if (received != take) readFailure("ERROR SD TWL region read", offset, take, received);
+#endif
         } else {
             take = 512 - (offset & 511);
             if (take > length) take = length;
@@ -210,7 +219,7 @@ static void initialize(aFile* file)
     np3dTraceEvent("virtual map initialized", state->rom.count, launch->romSize, launch->cardControl);
 #else
     state = (Np3dFatState*)file->fatTableCache;
-    if (!state || state->rom.launch.magic != NP3D_LAUNCH_MAGIC || state->rom.launch.version != 1)
+    if (!state || state->rom.launch.magic != NP3D_LAUNCH_MAGIC || state->rom.launch.version != 2)
         readFailure("ERROR runtime virtual ROM state", (u32)state, file->firstCluster, file->fatTableCacheSize);
     state->rom.read = readSource;
 #if defined(B4DS) && defined(ARM9)

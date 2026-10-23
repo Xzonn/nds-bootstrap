@@ -81,6 +81,11 @@ static bool readSource(void* context, uint32_t kind, uint32_t offset, void* outp
             take = 0x8000 - offset;
             if (take > length) take = length;
             if (fseek(sources[0], offset, SEEK_SET) || fread(destination, 1, take, sources[0]) != take) return false;
+        } else if (rom.launch.twlSize && offset >= rom.launch.twlStart && offset - rom.launch.twlStart < rom.launch.twlSize) {
+            take = rom.launch.twlSize - (offset - rom.launch.twlStart);
+            if (take > length) take = length;
+            if (fseek(sources[0], 0x8000 + offset - rom.launch.twlStart, SEEK_SET)
+                || fread(destination, 1, take, sources[0]) != take) return false;
         } else {
             take = 512 - (offset & 511);
             if (take > length) take = length;
@@ -187,7 +192,7 @@ int np3dDeviceInit(void)
     bool read = fread(&launch, 1, sizeof(launch), descriptor) == sizeof(launch);
     int closed = fclose(descriptor);
     if (!read || closed) return 3;
-    if (launch.magic != NP3D_LAUNCH_MAGIC || launch.version != 1
+    if (launch.magic != NP3D_LAUNCH_MAGIC || launch.version != 2
         || !memchr(launch.cachePath, 0, sizeof(launch.cachePath))) return 4;
     np3dBootLog("vfs: descriptor cluster=%08lX map=%08lX data=%08lX prefix=%08lX rom=%lu card=%lu id=%08lX cache=%s\n",
         (unsigned long)descriptorCluster, (unsigned long)launch.mapCluster, (unsigned long)launch.dataCluster,
@@ -198,7 +203,8 @@ int np3dDeviceInit(void)
     sources[NP3D_MAP_SOURCE] = fopen(filename, "rb");
     snprintf(filename, sizeof(filename), "%s/data.bin", launch.cachePath);
     sources[1] = fopen(filename, "rb");
-    sources[0] = fopen("sd:/nitro-patcher/runtime/card-prefix.bin", "rb");
+    snprintf(filename, sizeof(filename), "%s/card-prefix.bin", launch.cachePath);
+    sources[0] = fopen(filename, "rb");
     if (!sources[NP3D_MAP_SOURCE] || !sources[1] || !sources[0]) return 5;
     if (!isDSiMode()) {
         sysSetCardOwner(BUS_OWNER_ARM9);

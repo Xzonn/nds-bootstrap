@@ -18,6 +18,7 @@ typedef struct {
     uint32_t mapCluster, dataCluster, prefixCluster;
     uint32_t mapSize, dataSize, romSize, cardSize;
     uint32_t cardControl, cardCode, cardId;
+    uint32_t twlStart, twlSize;
     char cachePath[256];
 } Np3dLaunch;
 
