@@ -827,7 +827,7 @@ void returnToLoader(bool reboot) {
 		tonccpy((u8*)0x02000400, (u8*)twlCfgLoc, 0x128);
 	}
 
-	if (reboot || consoleModel >= 2 || !(valueBits & b_dsiBios) || ((valueBits & twlTouch) && !(*(u8*)0x02FFE1BF & BIT(0))) || ((valueBits & b_dsiSD) && (valueBits & wideCheatUsed))) {
+	if (reboot || consoleModel >= 2 || *(u8*)(ce7+0x8400) || !(valueBits & b_dsiBios) || ((valueBits & twlTouch) && !(*(u8*)0x02FFE1BF & BIT(0))) || ((valueBits & b_dsiSD) && (valueBits & wideCheatUsed))) {
 		if (consoleModel < 2) {
 			unlaunchSetFilename();
 			readSoftResetId(true);

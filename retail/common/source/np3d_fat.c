@@ -201,6 +201,10 @@ static void initialize(aFile* file)
     u32 received = fileRead((char*)launch, &descriptor, 0, sizeof(*launch));
     np3dTraceCheckSd(TRACE_CLUSTER);
     if (received != sizeof(*launch)) readFailure("ERROR descriptor SD read", file->firstCluster, sizeof(*launch), received);
+#ifdef B4DS
+    received = fileRead(state->returnPath, &descriptor, offsetof(Np3dLaunchFile, returnPath), sizeof(state->returnPath));
+    if (received != sizeof(state->returnPath)) readFailure("ERROR return path SD read", file->firstCluster, sizeof(state->returnPath), received);
+#endif
     np3dTraceEvent("descriptor read complete", launch->magic, launch->version, launch->mapSize);
     np3dTraceEvent("descriptor source clusters", launch->mapCluster, launch->dataCluster, launch->prefixCluster);
 #ifdef TWOCARD
@@ -219,7 +223,7 @@ static void initialize(aFile* file)
     np3dTraceEvent("virtual map initialized", state->rom.count, launch->romSize, launch->cardControl);
 #else
     state = (Np3dFatState*)file->fatTableCache;
-    if (!state || state->rom.launch.magic != NP3D_LAUNCH_MAGIC || state->rom.launch.version != 2)
+    if (!state || state->rom.launch.magic != NP3D_LAUNCH_MAGIC || state->rom.launch.version != NP3D_LAUNCH_VERSION)
         readFailure("ERROR runtime virtual ROM state", (u32)state, file->firstCluster, file->fatTableCacheSize);
     state->rom.read = readSource;
 #if defined(B4DS) && defined(ARM9)

@@ -15,7 +15,7 @@
 bool np3dRomInit(Np3dRom* rom, const Np3dLaunch* launch, Np3dReadSource read, void* context)
 {
     uint32_t header[8];
-    if (launch->magic != NP3D_LAUNCH_MAGIC || launch->version != 2 || launch->mapSize < 32
+    if (launch->magic != NP3D_LAUNCH_MAGIC || launch->version != NP3D_LAUNCH_VERSION || launch->mapSize < 32
         || launch->twlStart > launch->cardSize || launch->twlSize > launch->cardSize - launch->twlStart) return false;
     rom->launch = *launch;
     rom->read = read;

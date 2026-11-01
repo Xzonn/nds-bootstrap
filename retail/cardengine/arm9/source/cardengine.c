@@ -26,6 +26,8 @@
 #include <nds/system.h>
 #include <nds/interrupts.h>
 #include <nds/ipc.h>
+#include <nds/input.h>
+#include <nds/card.h>
 #include <nds/timers.h>
 #include <nds/fifomessages.h>
 #include <nds/memory.h> // tNDSHeader
@@ -128,6 +130,7 @@ static u32 musicFileSize = 0x0;
 #endif // NODSIWARE
 
 bool cardReadInProgress = false;
+static int returnTimer = 0;
 // static int cardReadCount = 0;
 
 extern void setExceptionHandler2();
@@ -208,6 +211,7 @@ extern u32 getDtcmBase(void);
 
 void reset(u32 param, u32 param2) {
 	setDeviceOwner();
+	const bool returnFrontend = param == 0xFFFFFFFF;
 	#ifndef GSDD
 	const u32 resetParams = ((ce9->valueBits & isSdk5) ? RESET_PARAM_SDK5 : RESET_PARAM);
 	#else
@@ -223,7 +227,7 @@ void reset(u32 param, u32 param2) {
 	const bool downloadedSrl = (param2 == 0x4C525344); // 'DSRL'
 	const bool loadNitroSrl = (*(u32*)(resetParams+0xC) > 0);
 	#ifndef GSDD
-	if (rebootConsole /*|| param == 0xFFFFFFFF*/ || downloadedSrl || loadNitroSrl) {
+	if (!returnFrontend && (rebootConsole || downloadedSrl || loadNitroSrl)) {
 		enterCriticalSection();
 		if (rebootConsole) {
 			sharedAddr[1] = 0x57495344; // 'DSIW'
@@ -245,7 +249,12 @@ void reset(u32 param, u32 param2) {
 	}
 	#endif
 	// sharedAddr[3] = 0x52534554;
+	if (returnFrontend) {
+		sharedAddr[0] = 0;
+		sharedAddr[1] = 0;
+	}
 	sharedAddr[3] = 0x4E445352; // 'RSDN'
+	if (returnFrontend) while (sharedAddr[4] == 0x54495845);
 
 	//EXCEPTION_VECTOR_SDK1 = 0;
 
@@ -296,34 +305,6 @@ void reset(u32 param, u32 param2) {
 	if (param == 0xFFFFFFFF || downloadedSrl || loadNitroSrl) {
 		resetMpu();
 
-		for (vu16 *p = (vu16*)&REG_DISPCNT; p <= (vu16*)&REG_MASTER_BRIGHT; p++)
-		{
-			// Skip VCOUNT. Writing to it was setting it to 0 causing a frame to be
-			// misrendered. This can also have side effects on 3DS, even though the
-			// official TWL_FIRM can recover from it.
-			if (p != (vu16*)&REG_VCOUNT)
-				*p = 0;
-		}
-		for (vu16 *p = (vu16*)&REG_DISPCNT_SUB; p <= (vu16*)&REG_MASTER_BRIGHT_SUB; p++)
-		{
-			*p = 0;
-		}
-
-		GFX_STATUS = 0;
-
-		*(vu32*)&VRAM_A_CR = 0x80808080; //ABCD
-		*(vu16*)&VRAM_E_CR = 0x8080; //EF
-		VRAM_G_CR = 0x80; //G
-		*(vu16*)&VRAM_H_CR = 0x8080; //HI
-
-		toncset16(BG_PALETTE, 0, 512); // Clear main and sub palettes
-		toncset(VRAM, 0, 0xC0000); // Clear VRAM
-
-		*(vu32*)&VRAM_A_CR = 0; //ABCD
-		*(vu16*)&VRAM_E_CR = 0; //EF
-		VRAM_G_CR = 0; //G
-		*(vu16*)&VRAM_H_CR = 0; //HI
-
 		sdk5MpuFix();
 		ndsHeader = (tNDSHeader*)NDS_HEADER_SDK5;
 
@@ -363,12 +344,13 @@ void reset(u32 param, u32 param2) {
 		WRAM_CR = 0x03; // Set shared ram to ARM7
 		sharedAddr[1] = 0x48495344; // 'DSIH'
 
-		fileRead((char*)0x02370000, &ndsBootstrap, ce9->dldiPatchBinaryOffset, 0x400);
-		if (!dldiPatchBinary(dldiOffsetNew, ndsHeader->arm9destination, ndsHeader->arm9binarySize)) {
+		fileRead((char*)0x02370000, &ndsBootstrap, ce9->dldiPatchBinaryOffset, 0x800);
+		const char* returnPath = returnFrontend && (romFile.fatTableSettings & fatVirtual) ? ((Np3dFatState*)ce9->romFatTableCache)->returnPath : NULL;
+		if (!dldiPatchBinary(dldiOffsetNew, ndsHeader->arm9destination, ndsHeader->arm9binarySize, returnPath)) {
 			sharedAddr[1] = 0x57495344;
 		}
 
-		toncset((u32*)0x02FFD000, 0, 0x2000);
+		if (returnFrontend) while (sharedAddr[1] == 0x48495344);
 	} else {
 		u32 newArm7binarySize = 0;
 		fileRead((char*)&newArm7binarySize, &pageFile, 0x3FFFF4, sizeof(u32));
@@ -663,6 +645,17 @@ void myIrqHandlerIPC(void) {
 				REG_POWERCNT &= ~POWER_SWAP_LCDS;
 			else if(ce9->mainScreen == 2)
 				REG_POWERCNT |= POWER_SWAP_LCDS;
+			if (REG_KEYINPUT & (KEY_L | KEY_R | KEY_DOWN | KEY_B)) returnTimer = 0;
+			else if (returnTimer < 60 * 2) returnTimer++;
+			else {
+				u16 spi = REG_AUXSPICNT;
+				if (!cardReadInProgress && (romFile.fatTableSettings & fatVirtual)
+					&& !(spi & CARD_SPI_BUSY)
+					&& (spi & (CARD_SPI_ENABLE | CARD_SPI_HOLD)) != (CARD_SPI_ENABLE | CARD_SPI_HOLD)) {
+					sharedAddr[4] = 0x54495845;
+					reset(0xFFFFFFFF, 0);
+				}
+			}
 			break;
 		case 0x9:
 			inGameMenu((s32*)0);

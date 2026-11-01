@@ -12,6 +12,7 @@ typedef struct {
 #ifdef B4DS
     u32 fatBuffer[128];
     u32 sectorBuffer[128];
+    char returnPath[256];
 #endif
 #if NP3D_LAUNCH_TRACE
     u32 traceCluster;

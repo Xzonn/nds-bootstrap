@@ -185,14 +185,14 @@ int np3dDeviceInit(void)
     struct stat info;
     const char* path = "sd:/nitro-patcher/config/launch.bin";
     Np3dLaunch launch;
-    if (stat(path, &info) || info.st_size != sizeof(launch)) return 1;
+    if (stat(path, &info) || info.st_size != sizeof(Np3dLaunchFile)) return 1;
     descriptorCluster = info.st_ino;
     FILE* descriptor = fopen(path, "rb");
     if (!descriptor) return 2;
     bool read = fread(&launch, 1, sizeof(launch), descriptor) == sizeof(launch);
     int closed = fclose(descriptor);
     if (!read || closed) return 3;
-    if (launch.magic != NP3D_LAUNCH_MAGIC || launch.version != 2
+    if (launch.magic != NP3D_LAUNCH_MAGIC || launch.version != NP3D_LAUNCH_VERSION
         || !memchr(launch.cachePath, 0, sizeof(launch.cachePath))) return 4;
     np3dBootLog("vfs: descriptor cluster=%08lX map=%08lX data=%08lX prefix=%08lX rom=%lu card=%lu id=%08lX cache=%s\n",
         (unsigned long)descriptorCluster, (unsigned long)launch.mapCluster, (unsigned long)launch.dataCluster,

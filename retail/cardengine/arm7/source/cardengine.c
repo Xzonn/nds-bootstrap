@@ -250,6 +250,7 @@ void reset(void) {
 	funcsUnpatched = false;
 #endif
 	languageTimer = 0;
+	sharedAddr[4] = 0;
 
 	while (sharedAddr[0] != 0x544F4F42) { // 'BOOT'
 		if (sharedAddr[1] == 0x48495344) {  // 'DSIH'
@@ -436,20 +437,6 @@ void myIrqHandlerVBlank(void) {
 		swapTimer = 0;
 	}
 
-	/*if ( 0 == (REG_KEYINPUT & (KEY_L | KEY_R | KEY_DOWN | KEY_B))) {
-		if ((softResetTimer == 60 * 2) && (saveTimer == 0)) {
-			if (consoleModel < 2) {
-				unlaunchSetHiyaBoot();
-			}
-			memcpy((u32*)0x02000300, sr_data_srloader, 0x20);
-			i2cWriteRegister(0x4A, 0x70, 0x01);
-			i2cWriteRegister(0x4A, 0x11, 0x01);		// Reboot into TWiLight Menu++/DSiMenu++/SRLoader
-		}
-		softResetTimer++;
-	} else {
-		softResetTimer = 0;
-	}*/
-
 	if ((0 == (REG_KEYINPUT & KEY_SELECT)) && ((0 == (REG_KEYINPUT & KEY_UP)) || (0 == (REG_KEYINPUT & KEY_DOWN)))) {
 		if (volumeLevelTimer == 30) {
 			if (0 == (REG_KEYINPUT & KEY_UP)) {
@@ -501,9 +488,7 @@ void myIrqHandlerVBlank(void) {
 #endif
 
 	// Swap screens
-	if (mainScreen > 0 || screenIpc == 0x7) {
-		IPC_SendSync(screenIpc);
-	}
+	IPC_SendSync(screenIpc);
 
 	if (sharedAddr[0] == 0x524F5245) { // 'EROR'
 		REG_MASTER_VOLUME = 0;

@@ -27,6 +27,6 @@
 
 typedef signed int addr_t;
 typedef unsigned char data_t;
-bool dldiPatchBinary (const u32 dldiOffsetNew, data_t *binData, u32 binSize);
+bool dldiPatchBinary (const u32 dldiOffsetNew, data_t *binData, u32 binSize, const char* returnPath);
 
 #endif // DLDI_PATCHER_H

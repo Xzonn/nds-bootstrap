@@ -96,7 +96,22 @@ static const data_t dldiMagicString[] = "\xED\xA5\x8D\xBF Chishm";	// Normal DLD
 //static const data_t dldiMagicLoaderString[] = "\xEE\xA5\x8D\xBF Chishm";	// Different to a normal DLDI file
 #define DEVICE_TYPE_DLDI 0x49444C44
 
-bool dldiPatchBinary (const u32 dldiOffsetNew, data_t *binData, u32 binSize) {
+bool dldiPatchBinary (const u32 dldiOffsetNew, data_t *binData, u32 binSize, const char* returnPath) {
+	for (vu16 *p = (vu16*)&REG_DISPCNT; p <= (vu16*)&REG_MASTER_BRIGHT; p++) {
+		if (p != (vu16*)&REG_VCOUNT) *p = 0;
+	}
+	for (vu16 *p = (vu16*)&REG_DISPCNT_SUB; p <= (vu16*)&REG_MASTER_BRIGHT_SUB; p++) *p = 0;
+	GFX_STATUS = 0;
+	*(vu32*)&VRAM_A_CR = 0x80808080;
+	*(vu16*)&VRAM_E_CR = 0x8080;
+	VRAM_G_CR = 0x80;
+	*(vu16*)&VRAM_H_CR = 0x8080;
+	toncset16(BG_PALETTE, 0, 512);
+	toncset(VRAM, 0, 0xC0000);
+	*(vu32*)&VRAM_A_CR = 0;
+	*(vu16*)&VRAM_E_CR = 0;
+	VRAM_G_CR = 0;
+	*(vu16*)&VRAM_H_CR = 0;
 
 	addr_t memOffset;			// Offset of DLDI after the file is loaded into memory
 	addr_t patchOffset;			// Position of patch destination in the file
@@ -192,5 +207,17 @@ bool dldiPatchBinary (const u32 dldiOffsetNew, data_t *binData, u32 binSize) {
 		toncset (&pAH[readAddr(pDH, DO_bss_start) - ddmemStart] , 0, readAddr(pDH, DO_bss_end) - readAddr(pDH, DO_bss_start));
 	}
 
+	toncset((u32*)0x02FFD000, 0, 0x2000);
+	if (returnPath) {
+		u32 length = strlen(returnPath) + 1;
+		char* arguments = (char*)(((u32)binData + binSize + 3) & ~3);
+		tonccpy(arguments, returnPath, length);
+		const char returning[] = "--return";
+		tonccpy(arguments + length, returning, sizeof(returning));
+		arguments[length + sizeof(returning)] = 0;
+		__system_argv->argvMagic = ARGV_MAGIC;
+		__system_argv->commandLine = arguments;
+		__system_argv->length = length + sizeof(returning) + 1;
+	}
 	return true;
 }
