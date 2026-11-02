@@ -2655,6 +2655,14 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 		// loadApFixPostCardRead(conf, bootstrapPath, romTid, headerCRC);
 	}
 	loadMobiclipOffsets(conf, bootstrapPath, romTid, romVersion, headerCRC);
+	const u32 cheatLimit = (dsiFeatures() && !conf->b4dsMode) ? 0x4000 : 0x1C00;
+	const u32 combinedCheatSize = conf->cheatSize + conf->wideCheatSize + ((conf->valueBits & BIT(5)) ? conf->apPatchSize : 0);
+	if (conf->cheatSize > 4 && combinedCheatSize > cheatLimit) {
+		myConsoleDemoInit();
+		iprintf("Cheat data and AP fixes exceed\nthe available space (%lu/%lu bytes).\nDisable some cheats and try again.\n",
+			(unsigned long)combinedCheatSize, (unsigned long)cheatLimit);
+		return -1;
+	}
 	np3dBootLog("bootstrap: compatibility patches selected AP=%lu bytes offset=%08lX loader=%u\n",
 		(unsigned long)conf->apPatchSize, (unsigned long)conf->apPatchOffset, conf->loaderType);
 
