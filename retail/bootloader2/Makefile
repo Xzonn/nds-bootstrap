@@ -32,16 +32,13 @@ SPECS		:=  specs
 #---------------------------------------------------------------------------------
 ARCH	:=  -mthumb -march=armv4t
 
-CFLAGS	:=	-g -Wall -O2\
+CFLAGS	:=	-g -Wall -Os\
 			-mcpu=arm7tdmi -mtune=arm7tdmi -fomit-frame-pointer\
 			-ffast-math \
 			$(ARCH)
 
 CFLAGS	+=	$(INCLUDE) -DARM7 -D_NO_SDMMC -DB4DS -DBUILDFATTABLE -DLOADERTYPE2 -std=gnu99
 CFLAGS += -DNP3D_LAUNCH_TRACE=$(LAUNCH_TRACE)
-ifeq ($(LAUNCH_TRACE),1)
-CFLAGS += -Os
-endif
 
 ASFLAGS	:=	-g $(ARCH) $(INCLUDE)
 LDFLAGS	=	-nostartfiles -T $(TOPDIR)/load.ld -g $(ARCH) -Wl,--nmagic -Wl,-Map,$(TARGET).map
