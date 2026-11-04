@@ -1443,7 +1443,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 
 		if (strcmp(conf->ndsPath, "np3d:/rom.nds") == 0) {
 			const char* cardTid = (const char*)&np3dLaunchInfo()->cardCode;
-			conf->specialCard = (cardTid[0] == 'I' || memcmp(cardTid, "UZP", 3) == 0
+			conf->specialCard = !(np3dLaunchInfo()->prefixCluster & NP3D_SOURCE_FILE) && (cardTid[0] == 'I' || memcmp(cardTid, "UZP", 3) == 0
 				|| memcmp(cardTid, "HND", 3) == 0 || memcmp(cardTid, "UEI", 3) == 0);
 			if (conf->specialCard) conf->valueBits2 |= BIT(4);
 		} else if (!conf->bootstrapOnFlashcard && !conf->gameOnFlashcard && !conf->saveOnFlashcard) {

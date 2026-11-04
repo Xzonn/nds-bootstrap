@@ -70,7 +70,7 @@ void np3dBootLog(const char* format, ...)
 static bool readSource(void* context, uint32_t kind, uint32_t offset, void* output, uint32_t length)
 {
     (void)context;
-    if (kind != 0) {
+    if (kind != 0 || (rom.launch.prefixCluster & NP3D_SOURCE_FILE)) {
         FILE* file = sources[kind];
         return fseek(file, offset, SEEK_SET) == 0 && fread(output, 1, length, file) == length;
     }
@@ -184,16 +184,19 @@ int np3dDeviceInit(void)
     np3dBootLog("vfs: reading launch descriptor\n");
     struct stat info;
     const char* path = "sd:/nitro-patcher/config/launch.bin";
-    Np3dLaunch launch;
+    Np3dLaunchFile launchFile;
+    Np3dLaunch* launchInfo = &launchFile.rom;
     if (stat(path, &info) || info.st_size != sizeof(Np3dLaunchFile)) return 1;
     descriptorCluster = info.st_ino;
     FILE* descriptor = fopen(path, "rb");
     if (!descriptor) return 2;
-    bool read = fread(&launch, 1, sizeof(launch), descriptor) == sizeof(launch);
+    bool read = fread(&launchFile, 1, sizeof(launchFile), descriptor) == sizeof(launchFile);
     int closed = fclose(descriptor);
     if (!read || closed) return 3;
+    Np3dLaunch launch = *launchInfo;
     if (launch.magic != NP3D_LAUNCH_MAGIC || launch.version != NP3D_LAUNCH_VERSION
-        || !memchr(launch.cachePath, 0, sizeof(launch.cachePath))) return 4;
+        || !memchr(launch.cachePath, 0, sizeof(launch.cachePath))
+        || !memchr(launchFile.sourcePath, 0, sizeof(launchFile.sourcePath))) return 4;
     np3dBootLog("vfs: descriptor cluster=%08lX map=%08lX data=%08lX prefix=%08lX rom=%lu card=%lu id=%08lX cache=%s\n",
         (unsigned long)descriptorCluster, (unsigned long)launch.mapCluster, (unsigned long)launch.dataCluster,
         (unsigned long)launch.prefixCluster, (unsigned long)launch.romSize, (unsigned long)launch.cardSize,
@@ -204,10 +207,11 @@ int np3dDeviceInit(void)
     snprintf(filename, sizeof(filename), "%s/data.bin", launch.cachePath);
     sources[1] = fopen(filename, "rb");
     snprintf(filename, sizeof(filename), "%s/card-prefix.bin", launch.cachePath);
-    sources[0] = fopen(filename, "rb");
+    bool sourceFile = launch.prefixCluster & NP3D_SOURCE_FILE;
+    sources[0] = fopen(sourceFile ? launchFile.sourcePath : filename, "rb");
     if (!sources[NP3D_MAP_SOURCE] || !sources[1] || !sources[0]) return 5;
-    if (!isDSiMode()) {
-        sysSetCardOwner(BUS_OWNER_ARM9);
+    if (sourceFile || !isDSiMode()) {
+        if (!sourceFile) sysSetCardOwner(BUS_OWNER_ARM9);
         if (!np3dRomInit(&rom, &launch, readSource, NULL)) return 9;
         return AddDevice(&device) >= 0 ? 0 : 10;
     }

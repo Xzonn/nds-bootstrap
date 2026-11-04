@@ -133,10 +133,10 @@ static bool readSource(void* context, u32 kind, u32 offset, void* output, u32 le
         np3dTraceEvent("card registers before first source read", REG_ROMCTRL, REG_AUXSPICNT, REG_EXMEMSTAT);
     }
 #endif
-    if (kind == NP3D_MAP_SOURCE || kind == 1) {
+    if (kind) {
         u32 received = fileRead(output, kind == 1 ? &state->patchFile : &state->mapFile, offset, length);
         np3dTraceCheckSd(TRACE_CLUSTER);
-        if (received != length) readFailure("ERROR SD map/patch read", kind, offset, received);
+        if (received != length) readFailure("ERROR SD read", kind, offset, received);
 #if NP3D_LAUNCH_TRACE && defined(BUILDFATTABLE)
         if (trace) np3dTraceEvent("source SD read complete", kind, offset, received);
 #endif
@@ -145,12 +145,12 @@ static bool readSource(void* context, u32 kind, u32 offset, void* output, u32 le
     u8* destination = output;
     while (length) {
         u32 take;
-        if (offset < 0x8000) {
-            take = 0x8000 - offset;
+        if (offset < 0x8000 || (state->rom.launch.prefixCluster & NP3D_SOURCE_FILE)) {
+            take = (state->rom.launch.prefixCluster & NP3D_SOURCE_FILE) ? length : 0x8000 - offset;
             if (take > length) take = length;
             u32 received = fileRead((char*)destination, &state->prefixFile, offset, take);
             np3dTraceCheckSd(TRACE_CLUSTER);
-            if (received != take) readFailure("ERROR SD card prefix read", offset, take, received);
+            if (received != take) readFailure("ERROR SD read", offset, take, received);
 #ifndef B4DS
         } else if (state->rom.launch.twlSize && offset >= state->rom.launch.twlStart
             && offset - state->rom.launch.twlStart < state->rom.launch.twlSize) {
@@ -210,11 +210,11 @@ static void initialize(aFile* file)
 #ifdef TWOCARD
     getFileFromCluster(&state->mapFile, launch->mapCluster, false);
     getFileFromCluster(&state->patchFile, launch->dataCluster, false);
-    getFileFromCluster(&state->prefixFile, launch->prefixCluster, false);
+    getFileFromCluster(&state->prefixFile, launch->prefixCluster & ~NP3D_SOURCE_FILE, false);
 #else
     getFileFromCluster(&state->mapFile, launch->mapCluster);
     getFileFromCluster(&state->patchFile, launch->dataCluster);
-    getFileFromCluster(&state->prefixFile, launch->prefixCluster);
+    getFileFromCluster(&state->prefixFile, launch->prefixCluster & ~NP3D_SOURCE_FILE);
 #endif
     if (!np3dRomInit(&state->rom, launch, readSource, NULL)) readFailure("ERROR virtual map initialization", launch->magic, launch->version, launch->mapSize);
 #if NP3D_LAUNCH_TRACE

@@ -10,8 +10,9 @@
 #endif
 
 #define NP3D_VIRTUAL_CLUSTER 0x80000000u
+#define NP3D_SOURCE_FILE 0x80000000u
 #define NP3D_LAUNCH_MAGIC 0x4c33504eu
-#define NP3D_LAUNCH_VERSION 3
+#define NP3D_LAUNCH_VERSION 4
 #define NP3D_MAP_SOURCE 3
 
 typedef struct {
@@ -26,6 +27,7 @@ typedef struct {
 typedef struct {
     Np3dLaunch rom;
     char returnPath[256];
+    char sourcePath[256];
 } Np3dLaunchFile;
 
 typedef struct {
