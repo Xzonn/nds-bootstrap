@@ -40,6 +40,7 @@
 
 #define fatCached BIT(0)
 #define fatCompressed BIT(1)
+#define fatVirtual BIT(3)
 
 typedef	struct
 {

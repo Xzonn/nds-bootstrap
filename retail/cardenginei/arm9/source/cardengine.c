@@ -58,6 +58,8 @@
 #define tFormersFix BIT(18)
 #define useColorLut BIT(21)
 #define colorLutBlockVCount BIT(22)
+#define readWaitSleep BIT(23)
+#define readWaitBusy BIT(24)
 
 //#ifdef DLDI
 #include "my_fat.h"
@@ -468,7 +470,8 @@ static inline void cardReadNormal(u8* dst, u32 src, u32 len) {
 	// while (sharedAddr[3]==0x444D4152);	// Wait during a RAM dump
 	fileRead((char*)dst, ((ce9->valueBits & overlaysCached) && src >= ce9->overlaysSrc && src < ndsHeader->arm7romOffset) ? apFixOverlaysFile : romFile, src, len);
 #else
-	runSleepMs = (((ce9->valueBits & asyncCardRead) || ce9->strmLoadFlag) && REG_IME != 0 && REG_IF != 0);
+	runSleepMs = (!(ce9->valueBits & readWaitBusy) && ((ce9->valueBits & (asyncCardRead | readWaitSleep)) || ce9->strmLoadFlag
+		|| ((romFile->fatTableSettings & fatVirtual) && memcmp(ndsHeader->gameCode, "B3R", 3) == 0)) && REG_IME != 0 && REG_IF != 0);
 	const u32 commandRead = ((isDma || ce9->strmLoadFlag || asyncDataAvailable(src)) ? 0x025FFB09 : 0x025FFB08);
 
 	accessCounter++;

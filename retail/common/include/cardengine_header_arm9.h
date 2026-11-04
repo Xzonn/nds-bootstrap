@@ -112,6 +112,8 @@ typedef struct cardengineArm9 {
 		20: resetOnEveryException
 		21: useColorLut
 		22: colorLutBlockVCount
+		23: readWaitSleep
+		24: readWaitBusy
 	*/
 	s32 mainScreen;
 	u32 consoleModel;

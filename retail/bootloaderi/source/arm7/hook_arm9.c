@@ -35,6 +35,8 @@
 #define b_resetOnEveryException BIT(20)
 #define b_useColorLut BIT(21)
 #define b_colorLutBlockVCount BIT(22)
+#define b_readWaitSleep BIT(23)
+#define b_readWaitBusy BIT(24)
 
 
 static const int MAX_HANDLER_LEN = 50;
@@ -266,6 +268,8 @@ int hookNdsRetailArm9(
 	if (asyncCardRead) {
 		ce9->valueBits |= b_asyncCardRead;
 	}
+	if (readWaitSleep) ce9->valueBits |= b_readWaitSleep;
+	if (readWaitBusy) ce9->valueBits |= b_readWaitBusy;
 	if (sharedWramEnabled) {
 		ce9->valueBits |= b_useSharedRam;
 	}
