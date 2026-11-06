@@ -1471,6 +1471,10 @@ int arm7_main(void) {
 		if (laterSdk) {
 			fatTableAddr = ce9Alt ? 0x023FF268 : 0x023FF200;
 			fatTableSizeNoExp = ce9Alt ? 0x598 : 0x600;
+			if (virtualRom && ce9Location == CARDENGINE_ARM9_LOCATION_DLDI_ALT && _io_dldi_size < 0x0E) {
+				fatTableAddr = ce9Location + 0x2800;
+				fatTableSizeNoExp = 0xC00;
+			}
 
 			lastClusterCacheUsed = (u32*)0x037F8000;
 			clusterCache = 0x037F8000;
