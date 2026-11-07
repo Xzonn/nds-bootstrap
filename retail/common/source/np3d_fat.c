@@ -35,6 +35,9 @@ extern u32 np3dTraceCluster;
 static u32 tracedSources;
 static u32 readCount;
 #endif
+#if NP3D_LAUNCH_TRACE && defined(ARM7)
+static u32 physicalReadCount;
+#endif
 #if NP3D_LAUNCH_TRACE && (!defined(B4DS) || defined(BUILDFATTABLE))
 #ifdef BUILDFATTABLE
 #define TRACE_CLUSTER np3dTraceCluster
@@ -86,6 +89,14 @@ static void readCardBlock(Np3dFatState* state, u32 offset)
 #endif
     }
     u16 previous = REG_AUXSPICNT;
+#if NP3D_LAUNCH_TRACE && defined(ARM7)
+    ++physicalReadCount;
+    bool trace = physicalReadCount <= 16 || !(physicalReadCount & (physicalReadCount - 1));
+    if (trace) {
+        np3dTraceEvent("B7 begin (a=number b=offset c=EXMEM)", physicalReadCount, offset, REG_EXMEMSTAT);
+        np3dTraceEvent("B7 registers before (a=ROMCTRL b=SPI c=IPC)", REG_ROMCTRL, previous, REG_IPC_SYNC);
+    }
+#endif
     REG_AUXSPICNT = CARD_CR1_ENABLE << 8;
     command[0] = CARD_CMD_DATA_READ;
     command[1] = offset >> 24;
@@ -93,6 +104,9 @@ static void readCardBlock(Np3dFatState* state, u32 offset)
     command[3] = offset >> 8;
     command[4] = offset;
     command[5] = command[6] = command[7] = 0;
+#if NP3D_LAUNCH_TRACE && defined(ARM7)
+    if (trace) np3dTraceEvent("B7 command (a=command b=offset c=control)", CARD_CMD_DATA_READ, offset, control);
+#endif
     REG_ROMCTRL = control | CARD_ACTIVATE | CARD_nRESET | CARD_BLK_SIZE(1);
     u32 count = 0;
 #if NP3D_LAUNCH_TRACE
@@ -116,6 +130,9 @@ static void readCardBlock(Np3dFatState* state, u32 offset)
     if (count != 128) {
         readFailure("ERROR incomplete physical Game Card read", offset, count, REG_ROMCTRL);
     }
+#if NP3D_LAUNCH_TRACE && defined(ARM7)
+    if (physicalReadCount <= 4096 || trace) np3dTraceEvent("B7 data (a=offset b=word0 c=word127)", offset, state->cardBuffer[0], state->cardBuffer[127]);
+#endif
 }
 
 static bool readSource(void* context, u32 kind, u32 offset, void* output, u32 length)
@@ -230,6 +247,10 @@ static void initialize(aFile* file)
     state->rom.context = state;
 #else
     state->rom.context = NULL;
+#endif
+#if NP3D_LAUNCH_TRACE && defined(ARM7) && !defined(B4DS)
+    np3dTraceBegin(state->traceCluster);
+    np3dTraceEvent("runtime virtual ROM initialized", state->rom.count, state->rom.launch.cardControl, REG_EXMEMSTAT);
 #endif
 #endif
 #if !defined(B4DS) || defined(BUILDFATTABLE)

@@ -21,6 +21,8 @@ static uint32_t cardBlock[128];
 static uint32_t cardOffset = UINT32_MAX;
 
 #if NP3D_LAUNCH_TRACE
+static uint32_t physicalReadCount;
+
 uint32_t np3dPrepareLoaderLog(void)
 {
     const char* path = "sd:/nitro-patcher/logs/arm7.log";
@@ -92,11 +94,23 @@ static bool readSource(void* context, uint32_t kind, uint32_t offset, void* outp
             if (cardOffset != (offset & ~511u)) {
                 bool firstCardRead = cardOffset == UINT32_MAX;
                 if (firstCardRead) np3dBootLog("vfs: first physical ROM read begin offset=%08lX\n", (unsigned long)(offset & ~511u));
+#if NP3D_LAUNCH_TRACE
+                ++physicalReadCount;
+                bool trace = physicalReadCount <= 16 || !(physicalReadCount & (physicalReadCount - 1));
+                if (trace) np3dBootLog("vfs: B7 number=%lu offset=%08lX ROMCTRL=%08lX SPI=%04X EXMEM=%04X\n",
+                    (unsigned long)physicalReadCount, (unsigned long)(offset & ~511u),
+                    (unsigned long)REG_ROMCTRL, REG_AUXSPICNT, REG_EXMEMCNT);
+#endif
                 if (isDSiMode()) cardRead(offset & ~511u, cardBlock, sizeof(cardBlock));
                 else cardParamCommand(CARD_CMD_DATA_READ, offset & ~511u,
                     (rom.launch.cardControl & ~CARD_BLK_SIZE(7)) | CARD_ACTIVATE | CARD_nRESET | CARD_BLK_SIZE(1),
                     cardBlock, sizeof(cardBlock)/sizeof(uint32_t));
                 if (firstCardRead) np3dBootLog("vfs: first physical ROM read complete\n");
+#if NP3D_LAUNCH_TRACE
+                if (trace) np3dBootLog("vfs: B7 data word0=%08lX word1=%08lX word127=%08lX ROMCTRL=%08lX\n",
+                    (unsigned long)cardBlock[0], (unsigned long)cardBlock[1], (unsigned long)cardBlock[127],
+                    (unsigned long)REG_ROMCTRL);
+#endif
                 cardOffset = offset & ~511u;
             }
             memcpy(destination, (uint8_t*)cardBlock + (offset & 511), take);

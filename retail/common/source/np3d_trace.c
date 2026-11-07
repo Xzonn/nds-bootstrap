@@ -20,8 +20,8 @@ static u32 sequence;
 static u32 failedSector, failedCount;
 static int failedResult;
 static bool failedWrite;
-#ifdef BUILDFATTABLE
 static u32 position = NP3D_TRACE_RECORD;
+#ifdef BUILDFATTABLE
 static bool ready;
 static u32 pendingCount;
 static char pending[8][NP3D_TRACE_RECORD] __attribute__((aligned(4)));
@@ -71,10 +71,10 @@ static void writeRecord(const char* data, u32 offset)
 
 void np3dTraceEvent(const char* message, u32 a, u32 b, u32 c)
 {
-#ifdef BUILDFATTABLE
     if (!traceFile.firstCluster) return;
     np3dTraceCheckSd(traceFile.firstCluster);
     formatRecord(message, a, b, c);
+#ifdef BUILDFATTABLE
     if (!ready) {
         if (pendingCount >= sizeof(pending) / sizeof(pending[0])) {
             nocashMessage("NitroPatcher: early diagnostic buffer exhausted");
@@ -83,12 +83,15 @@ void np3dTraceEvent(const char* message, u32 a, u32 b, u32 c)
         tonccpy(pending[pendingCount++], record, sizeof(record));
         return;
     }
-    if (position >= NP3D_TRACE_BYTES - NP3D_TRACE_RECORD) {
+    const u32 limit = NP3D_TRACE_BYTES / 2;
+#else
+    const u32 limit = NP3D_TRACE_BYTES;
+#endif
+    if (position >= limit - NP3D_TRACE_RECORD) {
         np3dTraceFailure(traceFile.firstCluster, "ERROR diagnostic file capacity exceeded", position, sequence, 0);
     }
     writeRecord(record, position);
     position += sizeof(record);
-#endif
 }
 
 void np3dTraceSdError(u32 sector, u32 count, int result, bool writing)
@@ -127,7 +130,6 @@ void np3dTraceFailure(u32 cluster, const char* message, u32 a, u32 b, u32 c)
     while (1);
 }
 
-#ifdef BUILDFATTABLE
 void np3dTraceBegin(u32 cluster)
 {
 #ifdef B4DS
@@ -135,8 +137,13 @@ void np3dTraceBegin(u32 cluster)
 #else
     getFileFromCluster(&traceFile, cluster, false);
 #endif
+#ifndef BUILDFATTABLE
+    position = NP3D_TRACE_BYTES / 2;
+    sequence = 0;
+#endif
 }
 
+#ifdef BUILDFATTABLE
 void np3dTraceReady(void)
 {
     if (!traceFile.firstCluster) return;
