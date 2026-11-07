@@ -29,7 +29,7 @@ typedef struct configuration {
 	// char* gbaPath;
 	// char* gbaSavPath;
 	char* apPatchPath;
-	bool apPatch;
+	u8 apPatch;
 	char* apPatchPostCardReadPath;
 	char* dsi2dsSavePatchPath;
 	u32 ndsBootstrapCluster;

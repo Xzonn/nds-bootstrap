@@ -2,6 +2,7 @@
 #include <string>
 #include <string.h>
 #include <fat.h>
+#include <dirent.h>
 #include "configuration.h"
 #include "nitrofs.h"
 
@@ -380,6 +381,25 @@ void loadApFix(configuration* conf, const char* bootstrapPath, const char* romTi
 		}
 
 		conf->apPatchPath[0] = 0;
+		if (conf->apPatch == 2) {
+			std::string directory = std::string(conf->bootstrapOnFlashcard ? "fat:" : "sd:") + "/nitro-patcher/runtime/bootstrap/apFix/";
+			for (const char* extension : {".ips", ".bin"}) {
+				DIR* patches = opendir(directory.c_str());
+				if (!patches) break;
+				std::string selected;
+				while (dirent* entry = readdir(patches)) {
+					std::string name = entry->d_name;
+					if (name.size() == 13 && name.compare(0, 4, romTid) == 0 && name[4] == '-'
+						&& name.compare(9, 4, extension) == 0 && (selected.empty() || name < selected)) selected = name;
+				}
+				closedir(patches);
+				if (selected.empty()) continue;
+				sprintf(conf->apPatchPath, "%s%s", directory.c_str(), selected.c_str());
+				conf->apPatchSize = getFileSize(conf->apPatchPath);
+				if (strcmp(extension, ".bin") == 0) conf->valueBits |= BIT(5);
+				return;
+			}
+		}
 	}
 
 	FILE *file = fopen("nitro:/apfix.pck", "rb");
@@ -399,12 +419,12 @@ void loadApFix(configuration* conf, const char* bootstrapPath, const char* romTi
 	u32 offset = 0, size = 0;
 	bool cheatVer = false;
 
-	// Try binary search for the game
+	// Search for the game
 	int left = 0;
 	int right = fileCount;
 	bool tidFound = false;
 
-	while (left <= right) {
+	while (left < right) {
 		fseek(file, 16 + left * 16, SEEK_SET);
 		fread(buf, 1, 4, file);
 		int cmp = strcmp(buf, romTid);
@@ -416,7 +436,7 @@ void loadApFix(configuration* conf, const char* bootstrapPath, const char* romTi
 			fread(&size, 1, sizeof(size), file);
 			cheatVer = fgetc(file) & 1;
 
-			if (crc == 0xFFFF || crc == headerCRC) {
+			if (conf->apPatch == 2 || crc == 0xFFFF || crc == headerCRC) {
 				break;
 			} else {
 				offset = 0, size = 0;

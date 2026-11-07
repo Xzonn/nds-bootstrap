@@ -415,7 +415,7 @@ static void load_conf(configuration* conf, const char* fn) {
 
 	// AP-patch path
 	// conf->apPatchPath = strdup(config_file.fetch("NDS-BOOTSTRAP", "AP_FIX_PATH").c_str());
-	conf->apPatch = (bool)strtol(config_file.fetch("NDS-BOOTSTRAP", "AP_PATCH", "1").c_str(), NULL, 0);
+	conf->apPatch = strtol(config_file.fetch("NDS-BOOTSTRAP", "AP_PATCH", "1").c_str(), NULL, 0);
 	int updateDisplay = strtol(config_file.fetch("NDS-BOOTSTRAP", "UPDATE_DISPLAY_WHILE_READING", "-1").c_str(), NULL, 0);
 	if (updateDisplay == 1) conf->valueBits4 |= BIT(2);
 	else if (updateDisplay == 0) conf->valueBits4 |= BIT(3);
