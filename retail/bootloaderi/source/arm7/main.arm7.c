@@ -972,6 +972,9 @@ static tNDSHeader* loadHeader(tDSiHeader* dsiHeaderTemp, const module_params_t* 
 	//dmaCopyWords(3, &dsiHeaderTemp.ndshdr, (char*)ndsHeader, 0x170);
 	//dmaCopyWords(3, &dsiHeaderTemp.ndshdr, ndsHeader, sizeof(dsiHeaderTemp.ndshdr));
 	*ndsHeader = dsiHeaderTemp->ndshdr;
+	if (!dsiModeConfirmed && isSdk5(moduleParams)) {
+		*(tNDSHeader*)NDS_HEADER = *ndsHeader;
+	}
 	if (ROMsupportsDsiMode(ndsHeader) && dsiModeConfirmed) {
 		//dmaCopyWords(3, &dsiHeaderTemp, ndsHeader, sizeof(dsiHeaderTemp));
 		//*(tDSiHeader*)ndsHeader = *dsiHeaderTemp;
