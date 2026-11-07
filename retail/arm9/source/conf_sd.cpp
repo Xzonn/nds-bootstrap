@@ -1075,7 +1075,7 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 	bool donorLoaded = false;
 	conf->isDSiWare = (dsiFeatures() && !conf->b4dsMode && ((unitCode == 3 && (accessControl & BIT(4)))
 					|| (unitCode == 2 && conf->dsiMode && romTid[0] == 'K')));
-	if (conf->isDSiWare && (totalRomSize >= 0x04000000 || conf->dsiWareSlot1Mode || !scfgSdmmcEnabled || !isDSiMode())) {
+	if (conf->isDSiWare && (totalRomSize > 0x04000000 || conf->dsiWareSlot1Mode || !scfgSdmmcEnabled || !isDSiMode())) {
 		conf->valueBits4 |= BIT(0);
 	}
 	bool dsiEnhancedMbk = false;
@@ -1920,9 +1920,9 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 					igmPals[i] = VRAM_E[igmPals[i] % 0x8000];
 				}
 			}
-			fwrite((u8*)igmText, 1, 0xA000, cebin);
+			fwrite((u8*)igmText, 1, INGAME_MENU_BUFFER_SIZE, cebin);
 			closeRuntimeFile(cebin, pageFilePath.c_str());
-			toncset((u8*)igmText, 0, 0xA000);
+			toncset((u8*)igmText, 0, INGAME_MENU_BUFFER_SIZE);
 		}
 
 		// Load DS blowfish
@@ -2274,9 +2274,9 @@ int loadFromSD(configuration* conf, const char *bootstrapPath) {
 
 			cebin = fopen(pageFilePath.c_str(), "r+");
 			if (!cebin) runtimeWriteFailed(pageFilePath.c_str());
-			fwrite((u8*)igmText, 1, 0xA000, cebin);
+			fwrite((u8*)igmText, 1, INGAME_MENU_BUFFER_SIZE, cebin);
 			closeRuntimeFile(cebin, pageFilePath.c_str());
-			toncset((u8*)igmText, 0, 0xA000);
+			toncset((u8*)igmText, 0, INGAME_MENU_BUFFER_SIZE);
 		}
 
 		if (accessControl & BIT(4)) {
